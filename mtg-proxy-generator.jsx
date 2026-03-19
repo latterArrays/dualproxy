@@ -9,6 +9,13 @@ const CARD_H = 350;    // 3.5 inches at 100px/in — the trim/cut size
 const BLEED_PX = 12;   // 3mm per side at 100px/in (2.953mm exact; rounds to 12px)
 const FULL_W = CARD_W + 2 * BLEED_PX;  // 274px — full print width including bleed
 const FULL_H = CARD_H + 2 * BLEED_PX;  // 374px — full print height including bleed
+// Export scale: 6 = double the 822×1122 reference → 1644×2244 px output (~600 DPI).
+// At scale 6: bleed=72px each side, trim=1500×2100px, full-bleed=1644×2244px.
+// Set to 3 for the 822×1122 single-res reference (300 DPI equivalent).
+const EXPORT_SCALE = 6;
+// Safe area: 36px at scale 3 (= BLEED_PX in screen units). No rendered text should
+// appear within this margin of the trim/cut boundary (bleed | border | safe | text).
+const SAFE_PX = BLEED_PX;
 
 const COLOR_PALETTES = {
   W: { bg: ["#f5f0e8", "#e8ddc8"], accent: "#c8a84b", text: "#2a1f0e", border: "#d4b896", name: "Plains" },
@@ -82,7 +89,9 @@ function ArtBackground({ artUrl, palette, isTop, artOpacity, overlayOpacity, vig
 }
 
 // renderArt=false when ProxyCard provides full-bleed art layers (borderless mode).
-function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpacity, vignetteOpacity, fontScale = 1, renderArt = true }) {
+// bleedExtend: how many px to push name/type line borders past the chrome boundary
+//   (set to BLEED_PX when called from ProxyCard so lines reach the cut edge).
+function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpacity, vignetteOpacity, fontScale = 1, renderArt = true, bleedExtend = 0 }) {
   if (!face) return null;
   const manaCost = face.mana_cost || "";
   const manaParts = manaCost.match(/\{[^}]+\}/g) || [];
@@ -94,7 +103,9 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
     <div style={{
       position: "relative",
       flex: 1,
-      overflow: "hidden",
+      // overflow:hidden clips absolute art; without art we leave it visible so
+      // negative-margin lines can extend into the bleed area.
+      overflow: renderArt ? "hidden" : "visible",
       background: renderArt
         ? `linear-gradient(${isTop ? "175deg" : "5deg"}, ${palette.bg[0]}, ${palette.bg[1]})`
         : "transparent",
@@ -108,7 +119,9 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
 
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        padding: "5px 7px 3px",
+        paddingTop: 5, paddingBottom: 3,
+        paddingLeft: SAFE_PX + bleedExtend, paddingRight: SAFE_PX + bleedExtend,
+        marginLeft: -bleedExtend, marginRight: -bleedExtend,
         borderBottom: `1px solid ${palette.border}`,
         position: "relative", zIndex: 1,
       }}>
@@ -130,7 +143,9 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
 
       <div style={{
         fontSize: 7 * fontScale, color: palette.text, opacity: 0.75,
-        padding: "2px 7px",
+        paddingTop: 2, paddingBottom: 2,
+        paddingLeft: SAFE_PX + bleedExtend, paddingRight: SAFE_PX + bleedExtend,
+        marginLeft: -bleedExtend, marginRight: -bleedExtend,
         borderBottom: `1px solid ${palette.border}`,
         fontFamily: "'Crimson Text', serif",
         fontStyle: "italic",
@@ -140,7 +155,8 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
       </div>
 
       <div style={{
-        flex: 1, padding: "4px 7px",
+        flex: 1, padding: `4px ${SAFE_PX}px`,
+        paddingBottom: (power !== undefined || loyalty !== undefined) ? `${8 * fontScale + 10}px` : "4px",
         fontSize: 7.2 * fontScale, lineHeight: 1.45,
         color: palette.text, opacity: 0.9,
         fontFamily: "'Crimson Text', serif",
@@ -159,9 +175,9 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
 
       {(power !== undefined || loyalty !== undefined) && (
         <div style={{
+          position: "absolute", bottom: 3, right: SAFE_PX,
           display: "flex", justifyContent: "flex-end",
-          padding: "2px 6px 3px",
-          position: "relative", zIndex: 1,
+          zIndex: 2,
         }}>
           <div style={{
             fontSize: 8 * fontScale, fontWeight: "bold", color: palette.accent,
@@ -177,7 +193,7 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
 
       {face.artist && (
         <div style={{
-          position: "absolute", bottom: 3, left: 5,
+          position: "absolute", bottom: 3, left: SAFE_PX,
           zIndex: 2, pointerEvents: "none",
           fontSize: 5.5 * fontScale,
           fontFamily: "'Crimson Text', serif",
@@ -237,25 +253,28 @@ function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bot
       </div>
 
       {/* ── CARD CHROME (at trim/cut boundary, transparent background) ──────── */}
+      {/* overflow:visible so negative-margin lines inside can reach the bleed edge;
+          the outer ProxyCard's overflow:hidden is the final clip boundary. */}
       <div style={{
         position: "absolute",
         inset: BLEED_PX,
         borderRadius: 12,
-        overflow: "hidden",
+        overflow: "visible",
         border: showBorder ? "2px solid #555" : "none",
         display: "flex",
         flexDirection: "column",
         boxShadow: showBorder ? "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)" : "none",
         zIndex: 1,
       }}>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "visible", minHeight: 0 }}>
           <CardFaceSection face={topFace} palette={topPalette} isTop={true} artUrl={topArt}
             artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity}
-            fontScale={fontScale} renderArt={false} />
+            fontScale={fontScale} renderArt={false} bleedExtend={BLEED_PX} />
         </div>
 
         <div style={{
-          height: 16,
+          height: 8,
+          marginLeft: -BLEED_PX, marginRight: -BLEED_PX,
           background: `linear-gradient(90deg, ${topPalette.border}cc, ${bottomPalette.border}cc)`,
           display: "flex", alignItems: "center", justifyContent: "center",
           flexShrink: 0,
@@ -268,12 +287,12 @@ function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bot
         </div>
 
         <div style={{
-          flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
+          flex: 1, display: "flex", flexDirection: "column", overflow: "visible", minHeight: 0,
           transform: flipBottom ? "rotate(180deg)" : "none",
         }}>
           <CardFaceSection face={bottomFace} palette={bottomPalette} isTop={false} artUrl={bottomArt}
             artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity}
-            fontScale={fontScale} renderArt={false} />
+            fontScale={fontScale} renderArt={false} bleedExtend={BLEED_PX} />
         </div>
       </div>
 
@@ -370,7 +389,7 @@ async function fetchCard(name) {
 
 const LAYOUT_DIVIDER = {
   transform:   "✦ transforms ✦",
-  modal_dfc:   "✦ // ✦",
+  modal_dfc:   "✦ modal ✦",
   // fallback for anything else (single-faced, etc.)
 };
 function autoDividerLabel(layout) {
@@ -434,14 +453,14 @@ async function renderCardToCanvas(card, settings, { bleed = true } = {}) {
   const fullCanvas = await html2canvas(container.firstChild, {
     useCORS: true,
     allowTaint: false,
-    scale: 3,
+    scale: EXPORT_SCALE,
     backgroundColor: null,
     logging: false,
   });
 
   root.unmount();
   document.body.removeChild(container);
-  return bleed ? fullCanvas : cropToTrim(fullCanvas, 3);
+  return bleed ? fullCanvas : cropToTrim(fullCanvas, EXPORT_SCALE);
 }
 
 // MPC Fill bracket sizes (number of cards per order tier)
@@ -1131,8 +1150,8 @@ function ExportModal({ cards, settings, onClose }) {
           Add bleed (3mm per side — 2.736×3.736″ total)
           <span style={{ color: "#3a2a5a", fontSize: 10 }}>
             {bleed
-              ? `${FULL_W * 3}×${FULL_H * 3}px`
-              : `${CARD_W * 3}×${CARD_H * 3}px`}
+              ? `${FULL_W * EXPORT_SCALE}×${FULL_H * EXPORT_SCALE}px`
+              : `${CARD_W * EXPORT_SCALE}×${CARD_H * EXPORT_SCALE}px`}
           </span>
         </label>
 
