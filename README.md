@@ -17,8 +17,13 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 
 ## Roadmap
 
-### Next Up
+### Known bugs
+- Art does not appear in exported images
+- P/T can overlap the middle bar if text is too big
+- Tap icon isn't rendering correctly
 
+### Next Up
+- **Mobile friendly layout** - site needs to work beautifully on a mobile aspect ratio
 - **Bulk import/export** — paste a decklist or import from a file; export all proxies as a print sheet or ZIP
 - **Global settings** — default font, text size, card style preferences applied across all cards
 - **Per-card edit mode**
