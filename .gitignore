@@ -1,0 +1,8 @@
+# Environment variables — never commit these
+.env.local
+.env*.local
+
+# Build output
+dist/
+node_modules/**
+.env.example
