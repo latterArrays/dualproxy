@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import html2canvas from "html2canvas";
 import posthog from "posthog-js";
 import "mana-font/css/mana.css";
 
-const CARD_W = 250;
-const CARD_H = 350;
+const CARD_W = 250;    // 2.5 inches at 100px/in — the trim/cut size
+const CARD_H = 350;    // 3.5 inches at 100px/in — the trim/cut size
+const BLEED_PX = 12;   // 3mm per side at 100px/in (2.953mm exact; rounds to 12px)
+const FULL_W = CARD_W + 2 * BLEED_PX;  // 274px — full print width including bleed
+const FULL_H = CARD_H + 2 * BLEED_PX;  // 374px — full print height including bleed
 
 const COLOR_PALETTES = {
   W: { bg: ["#f5f0e8", "#e8ddc8"], accent: "#c8a84b", text: "#2a1f0e", border: "#d4b896", name: "Plains" },
@@ -76,7 +81,8 @@ function ArtBackground({ artUrl, palette, isTop, artOpacity, overlayOpacity, vig
   );
 }
 
-function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpacity, vignetteOpacity, fontScale = 1 }) {
+// renderArt=false when ProxyCard provides full-bleed art layers (borderless mode).
+function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpacity, vignetteOpacity, fontScale = 1, renderArt = true }) {
   if (!face) return null;
   const manaCost = face.mana_cost || "";
   const manaParts = manaCost.match(/\{[^}]+\}/g) || [];
@@ -89,12 +95,16 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
       position: "relative",
       flex: 1,
       overflow: "hidden",
-      background: `linear-gradient(${isTop ? "175deg" : "5deg"}, ${palette.bg[0]}, ${palette.bg[1]})`,
+      background: renderArt
+        ? `linear-gradient(${isTop ? "175deg" : "5deg"}, ${palette.bg[0]}, ${palette.bg[1]})`
+        : "transparent",
       display: "flex",
       flexDirection: "column",
     }}>
-      <ArtBackground artUrl={artUrl} palette={palette} isTop={isTop}
-        artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
+      {renderArt && (
+        <ArtBackground artUrl={artUrl} palette={palette} isTop={isTop}
+          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
+      )}
 
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -164,47 +174,133 @@ function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpac
           </div>
         </div>
       )}
+
+      {face.artist && (
+        <div style={{
+          position: "absolute", bottom: 3, left: 5,
+          zIndex: 2, pointerEvents: "none",
+          fontSize: 5.5 * fontScale,
+          fontFamily: "'Crimson Text', serif",
+          fontStyle: "italic",
+          color: palette.text,
+          opacity: 0.45,
+          letterSpacing: "0.02em",
+        }}>
+          ✦ {face.artist}
+        </div>
+      )}
     </div>
   );
 }
 
-function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bottomArt, artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottom = true }) {
+// ProxyCard always renders at FULL_W × FULL_H (trim + 3mm bleed on each side).
+//
+// BORDERLESS ARCHITECTURE:
+//   Art layers fill the FULL bleed container — top face art in the top half,
+//   bottom face art in the bottom half. The art genuinely extends to the bleed edge.
+//   The card chrome (name, type, oracle text) sits at inset: BLEED_PX (the trim
+//   boundary) with a TRANSPARENT background — text floats over the art.
+//   showBorder adds an optional card frame outline at the trim boundary.
+//
+// Use a <TrimmedCard> wrapper to clip to the 2.5×3.5" trim size in the UI.
+function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bottomArt, artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottom = true, dividerLabel, layout, showBleed = false, showBorder = false }) {
+  const midLabel = dividerLabel ?? autoDividerLabel(layout);
   return (
-    <div style={{
-      width: CARD_W, height: CARD_H,
-      borderRadius: 12,
-      overflow: "hidden",
-      border: `2px solid #444`,
-      display: "flex",
-      flexDirection: "column",
-      boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)",
-      fontFamily: "'Crimson Text', serif",
-      position: "relative",
-    }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <CardFaceSection face={topFace} palette={topPalette} isTop={true} artUrl={topArt}
-          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} fontScale={fontScale} />
-      </div>
+    // overflow:hidden clips the art to the bleed boundary; borderRadius rounds it.
+    <div style={{ width: FULL_W, height: FULL_H, position: "relative", fontFamily: "'Crimson Text', serif", overflow: "hidden", borderRadius: 12 + BLEED_PX }}>
 
+      {/* ── FULL-BLEED ART LAYERS ───────────────────────────────────────────── */}
+      {/* Top face art fills the top half of the bleed container (top edge → midpoint).
+          The art, gradient overlay, and vignette all extend into the bleed margin. */}
       <div style={{
-        height: 16,
-        background: `linear-gradient(90deg, ${topPalette.border}, ${bottomPalette.border})`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
+        position: "absolute",
+        top: 0, left: 0, right: 0, bottom: "50%",
+        background: `linear-gradient(175deg, ${topPalette.bg[0]}, ${topPalette.bg[1]})`,
+        overflow: "hidden",
       }}>
-        <div style={{
-          fontSize: 7, color: "#fff", opacity: 0.6,
-          letterSpacing: "0.15em", textTransform: "uppercase",
-          fontFamily: "'Cinzel', serif",
-        }}>✦ transforms ✦</div>
+        <ArtBackground artUrl={topArt} palette={topPalette} isTop={true}
+          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
       </div>
 
+      {/* Bottom face art fills the bottom half (midpoint → bottom edge).
+          Rotated 180° when flipBottom=true so it matches the flipped chrome face. */}
       <div style={{
-        flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
+        position: "absolute",
+        top: "50%", left: 0, right: 0, bottom: 0,
+        background: `linear-gradient(5deg, ${bottomPalette.bg[0]}, ${bottomPalette.bg[1]})`,
+        overflow: "hidden",
         transform: flipBottom ? "rotate(180deg)" : "none",
+        transformOrigin: "50% 50%",
       }}>
-        <CardFaceSection face={bottomFace} palette={bottomPalette} isTop={false} artUrl={bottomArt}
-          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} fontScale={fontScale} />
+        <ArtBackground artUrl={bottomArt} palette={bottomPalette} isTop={false}
+          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
+      </div>
+
+      {/* ── CARD CHROME (at trim/cut boundary, transparent background) ──────── */}
+      <div style={{
+        position: "absolute",
+        inset: BLEED_PX,
+        borderRadius: 12,
+        overflow: "hidden",
+        border: showBorder ? "2px solid #555" : "none",
+        display: "flex",
+        flexDirection: "column",
+        boxShadow: showBorder ? "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)" : "none",
+        zIndex: 1,
+      }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <CardFaceSection face={topFace} palette={topPalette} isTop={true} artUrl={topArt}
+            artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity}
+            fontScale={fontScale} renderArt={false} />
+        </div>
+
+        <div style={{
+          height: 16,
+          background: `linear-gradient(90deg, ${topPalette.border}cc, ${bottomPalette.border}cc)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            fontSize: 7, color: "#fff", opacity: 0.7,
+            letterSpacing: "0.15em", textTransform: "uppercase",
+            fontFamily: "'Cinzel', serif",
+          }}>{midLabel}</div>
+        </div>
+
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
+          transform: flipBottom ? "rotate(180deg)" : "none",
+        }}>
+          <CardFaceSection face={bottomFace} palette={bottomPalette} isTop={false} artUrl={bottomArt}
+            artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity}
+            fontScale={fontScale} renderArt={false} />
+        </div>
+      </div>
+
+      {/* ── CUT LINE GUIDE ──────────────────────────────────────────────────── */}
+      {/* Dashed gold line at the trim boundary — only shown in bleed preview mode */}
+      {showBleed && (
+        <div style={{
+          position: "absolute",
+          inset: BLEED_PX,
+          borderRadius: 12,
+          border: "1.5px dashed rgba(255, 215, 0, 0.75)",
+          pointerEvents: "none",
+          zIndex: 3,
+        }} />
+      )}
+    </div>
+  );
+}
+
+// Clips a ProxyCard to the trim/cut size (CARD_W × CARD_H) for UI display.
+// In the grid, cards look like finished cards. The bleed margin is rendered
+// but hidden — html2canvas still captures the full bleed when exporting.
+function TrimmedCard({ children, style }) {
+  return (
+    <div style={{ width: CARD_W, height: CARD_H, overflow: "hidden", borderRadius: 12, position: "relative", flexShrink: 0, ...style }}>
+      <div style={{ position: "absolute", top: -BLEED_PX, left: -BLEED_PX }}>
+        {children}
       </div>
     </div>
   );
@@ -272,6 +368,124 @@ async function fetchCard(name) {
   return res.json();
 }
 
+const LAYOUT_DIVIDER = {
+  transform:   "✦ transforms ✦",
+  modal_dfc:   "✦ // ✦",
+  // fallback for anything else (single-faced, etc.)
+};
+function autoDividerLabel(layout) {
+  return LAYOUT_DIVIDER[layout] ?? "✦ // ✦";
+}
+
+// ── Export utilities ───────────────────────────────────────────────────────────
+
+function sanitizeFilename(name) {
+  return name.replace(/[^a-z0-9]/gi, "-").toLowerCase().replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Crops a full-bleed canvas (FULL_W×FULL_H at `scale`) down to the trim size
+// (CARD_W×CARD_H at `scale`) by removing the BLEED_PX margin on each side.
+function cropToTrim(bleedCanvas, scale) {
+  const b = Math.round(BLEED_PX * scale);
+  const w = Math.round(CARD_W * scale);
+  const h = Math.round(CARD_H * scale);
+  const dst = document.createElement("canvas");
+  dst.width = w; dst.height = h;
+  dst.getContext("2d").drawImage(bleedCanvas, b, b, w, h, 0, 0, w, h);
+  return dst;
+}
+
+// Renders a ProxyCard off-screen at FULL_W×FULL_H (native bleed size), then:
+//   bleed=true  → returns the full bleed canvas  (FULL_W×FULL_H at scale 3)
+//   bleed=false → crops to trim size             (CARD_W×CARD_H at scale 3)
+async function renderCardToCanvas(card, settings, { bleed = true } = {}) {
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;left:-9999px;top:0;pointer-events:none;z-index:-1;";
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await new Promise(resolve => {
+    root.render(
+      <ProxyCard
+        topFace={card.topFace} bottomFace={card.bottomFace}
+        topPalette={card.topPalette} bottomPalette={card.botPalette}
+        topArt={card.topArt} bottomArt={card.bottomArt}
+        flipBottom={card.flipBottom ?? settings.flipBottomDefault}
+        artOpacity={card.artOpacity ?? settings.artOpacity}
+        overlayOpacity={card.overlayOpacity ?? settings.overlayOpacity}
+        vignetteOpacity={card.vignetteOpacity ?? settings.vignetteOpacity}
+        fontScale={card.fontScale ?? settings.fontScale}
+        dividerLabel={card.dividerLabel} layout={card.layout}
+        showBorder={settings.showBorder ?? false}
+        showBleed={false}
+      />
+    );
+    setTimeout(resolve, 300);
+  });
+
+  // html2canvas captures the full FULL_W×FULL_H ProxyCard (bleed included)
+  const fullCanvas = await html2canvas(container.firstChild, {
+    useCORS: true,
+    allowTaint: false,
+    scale: 3,
+    backgroundColor: null,
+    logging: false,
+  });
+
+  root.unmount();
+  document.body.removeChild(container);
+  return bleed ? fullCanvas : cropToTrim(fullCanvas, 3);
+}
+
+// MPC Fill bracket sizes (number of cards per order tier)
+const MPC_BRACKETS = [18, 36, 55, 72, 90, 108, 126, 144, 162, 180, 198, 216, 234, 252, 396, 504, 612];
+
+function generateMPCXml(cards) {
+  const totalQty = cards.reduce((sum, c) => sum + (c.qty || 1), 0);
+  const bracket = MPC_BRACKETS.find(b => b >= totalQty) ?? MPC_BRACKETS[MPC_BRACKETS.length - 1];
+
+  let slotCursor = 0;
+  const frontEntries = cards.map(c => {
+    const qty = c.qty || 1;
+    const slots = Array.from({ length: qty }, (_, i) => slotCursor + i).join(",");
+    slotCursor += qty;
+    const id = Math.random().toString(36).substring(2, 10);
+    const filename = `${sanitizeFilename(c.cardName)}.png`;
+    return `    <card>\n      <id>${id}</id>\n      <slots>${slots}</slots>\n      <name>${filename}</name>\n      <query>${c.cardName}</query>\n    </card>`;
+  }).join("\n");
+
+  const allSlots = Array.from({ length: totalQty }, (_, i) => i).join(",");
+  const backId = Math.random().toString(36).substring(2, 10);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<order>
+  <details>
+    <quantity>${totalQty}</quantity>
+    <bracket>${bracket}</bracket>
+    <stock>(S30) Standard Smooth</stock>
+    <foil>false</foil>
+  </details>
+  <fronts>
+${frontEntries}
+  </fronts>
+  <backs>
+    <card>
+      <id>${backId}</id>
+      <slots>${allSlots}</slots>
+      <name>default</name>
+      <query>default</query>
+    </card>
+  </backs>
+</order>`;
+}
+
 function buildCardEntry(card) {
   let topFace, bottomFace;
   if (card.card_faces && card.card_faces.length >= 2) {
@@ -290,6 +504,8 @@ function buildCardEntry(card) {
     topArt: getArt(topFace, card),
     bottomArt: getArt(bottomFace, card),
     cardName: card.name,
+    layout: card.layout ?? null,
+    dividerLabel: null, // null = auto from layout
     qty: 1,
     flipBottom: null, // null = use global default
     // Per-card appearance overrides (null = use global)
@@ -418,6 +634,7 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const [botArt, setBotArt] = useState(card.bottomArt || "");
   const [qty, setQty] = useState(card.qty || 1);
   const [flipBottom, setFlipBottom] = useState(card.flipBottom ?? null);
+  const [dividerLabel, setDividerLabel] = useState(card.dividerLabel ?? "");
   const [tab, setTab] = useState("text");
 
   // Per-card appearance overrides
@@ -480,16 +697,20 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
 
         {/* Preview — always visible at top */}
         <div className="edit-preview-row" style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 16, marginBottom: 12, flexShrink: 0 }}>
-          <ProxyCard
-            topFace={top} bottomFace={bot}
-            topPalette={getPalette(top.colors || [])}
-            bottomPalette={getPalette(bot.colors || [])}
-            topArt={topArt || card.topArt}
-            bottomArt={botArt || card.bottomArt}
-            artOpacity={effectiveArt} overlayOpacity={effectiveOverlay}
-            vignetteOpacity={effectiveVignette} fontScale={effectiveFont}
-            flipBottom={effectiveFlip}
-          />
+          <TrimmedCard>
+            <ProxyCard
+              topFace={top} bottomFace={bot}
+              topPalette={getPalette(top.colors || [])}
+              bottomPalette={getPalette(bot.colors || [])}
+              topArt={topArt || card.topArt}
+              bottomArt={botArt || card.bottomArt}
+              artOpacity={effectiveArt} overlayOpacity={effectiveOverlay}
+              vignetteOpacity={effectiveVignette} fontScale={effectiveFont}
+              flipBottom={effectiveFlip}
+              dividerLabel={dividerLabel || null} layout={card.layout}
+              showBorder={globals.showBorder ?? DEFAULTS.showBorder}
+            />
+          </TrimmedCard>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8 }}>
             <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
             <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Crimson Text', serif" }}>
@@ -535,6 +756,20 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
               <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>TEXT</div>
               <OverrideSlider label="Font Size" value={localFontScale} globalValue={globals.fontScale} onChange={setLocalFontScale} min={0.5} max={1.5} />
 
+              <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
+              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>DIVIDER</div>
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 2, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>
+                  Label — leave blank to auto-detect from card type
+                </div>
+                <input
+                  value={dividerLabel}
+                  onChange={e => setDividerLabel(e.target.value)}
+                  placeholder={autoDividerLabel(card.layout)}
+                  style={inputStyle}
+                />
+              </div>
+
               <div style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 8 }}>
                 Per-card overrides. Click "reset" to use global settings.
               </div>
@@ -549,6 +784,7 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
               topFace: top, bottomFace: bot,
               topArt: topArt || null, bottomArt: botArt || null,
               qty, flipBottom,
+              dividerLabel: dividerLabel || null,
               topPalette: getPalette(top.colors || []),
               botPalette: getPalette(bot.colors || []),
               artOpacity: localArtOpacity,
@@ -642,7 +878,7 @@ function SettingsModal({ settings, onApply, onCancel }) {
 
             <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
             <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 10, letterSpacing: "0.06em" }}>CARD LAYOUT</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif" }}>Bottom face orientation</div>
               <div style={{ display: "flex", gap: 4 }}>
                 {[{ val: true, label: "Flipped" }, { val: false, label: "Upright" }].map(o => (
@@ -656,6 +892,20 @@ function SettingsModal({ settings, onApply, onCancel }) {
                 ))}
               </div>
             </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif" }}>Card border</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[{ val: false, label: "Borderless" }, { val: true, label: "Show border" }].map(o => (
+                  <button key={String(o.val)} onClick={() => set("showBorder")(o.val)} style={{
+                    padding: "4px 12px", fontSize: 11, cursor: "pointer",
+                    fontFamily: "'Cinzel', serif", borderRadius: 4,
+                    background: local.showBorder === o.val ? "#6d28d9" : "#1a0f2a",
+                    border: local.showBorder === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
+                    color: local.showBorder === o.val ? "#fff" : "#a080c0",
+                  }}>{o.label}</button>
+                ))}
+              </div>
+            </div>
             <div style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 12 }}>
               Tip: lower Color Wash + higher Art Visibility for a more painterly look.
             </div>
@@ -665,16 +915,19 @@ function SettingsModal({ settings, onApply, onCancel }) {
           <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
             {sample ? (
-              <ProxyCard
-                topFace={sample.topFace} bottomFace={sample.bottomFace}
-                topPalette={sample.topPalette} bottomPalette={sample.botPalette}
-                topArt={sample.topArt} bottomArt={sample.bottomArt}
-                artOpacity={local.artOpacity}
-                overlayOpacity={local.overlayOpacity}
-                vignetteOpacity={local.vignetteOpacity}
-                fontScale={local.fontScale}
-                flipBottom={local.flipBottomDefault}
-              />
+              <TrimmedCard>
+                <ProxyCard
+                  topFace={sample.topFace} bottomFace={sample.bottomFace}
+                  topPalette={sample.topPalette} bottomPalette={sample.botPalette}
+                  topArt={sample.topArt} bottomArt={sample.bottomArt}
+                  artOpacity={local.artOpacity}
+                  overlayOpacity={local.overlayOpacity}
+                  vignetteOpacity={local.vignetteOpacity}
+                  fontScale={local.fontScale}
+                  flipBottom={local.flipBottomDefault}
+                  showBorder={local.showBorder ?? DEFAULTS.showBorder}
+                />
+              </TrimmedCard>
             ) : (
               <div style={{
                 width: CARD_W, height: CARD_H,
@@ -745,15 +998,170 @@ function LoadingSpinner({ progress }) {
   );
 }
 
+// ── Export modal ───────────────────────────────────────────────────────────────
+
+function ExportOptionRow({ icon, title, description, buttonLabel, onClick, busy, busyLabel, done }) {
+  return (
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+      <div style={{ fontSize: 22, flexShrink: 0, paddingTop: 2, width: 28, textAlign: "center" }}>{icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 3, letterSpacing: "0.05em" }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 11, color: "#6a5a8a", fontFamily: "'Crimson Text', serif", lineHeight: 1.5, marginBottom: 8 }}>
+          {description}
+        </div>
+        <button
+          onClick={onClick}
+          disabled={busy}
+          style={{
+            border: "none", borderRadius: 6, color: "#fff",
+            fontSize: 11, fontWeight: 600, cursor: busy ? "default" : "pointer",
+            fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
+            padding: "6px 14px",
+            background: done ? "#065f46" : busy ? "#3a1a6a" : "#6d28d9",
+            opacity: busy ? 0.7 : 1,
+            transition: "background 0.15s",
+          }}>
+          {busy ? busyLabel : done ? "✓ Done" : buttonLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ExportModal({ cards, settings, onClose }) {
+  const [imgState, setImgState] = useState({ busy: false, done: false, label: "" });
+  const [xmlDone, setXmlDone] = useState(false);
+  const [bleed, setBleed] = useState(true);
+
+  async function handleExportImages() {
+    setImgState({ busy: true, done: false, label: `Rendering 1 of ${cards.length}…` });
+    try {
+      for (let i = 0; i < cards.length; i++) {
+        setImgState({ busy: true, done: false, label: `Rendering ${i + 1} of ${cards.length}…` });
+        const canvas = await renderCardToCanvas(cards[i], settings, { bleed });
+        await new Promise(resolve =>
+          canvas.toBlob(blob => { downloadBlob(blob, `${sanitizeFilename(cards[i].cardName)}.png`); resolve(); }, "image/png")
+        );
+      }
+      setImgState({ busy: false, done: true, label: "" });
+    } catch (e) {
+      console.error(e);
+      setImgState({ busy: false, done: false, label: "" });
+    }
+  }
+
+  function handleExportXml() {
+    const xml = generateMPCXml(cards);
+    downloadBlob(new Blob([xml], { type: "application/xml" }), "mpcfill-order.xml");
+    setXmlDone(true);
+  }
+
+  const totalCopies = cards.reduce((s, c) => s + (c.qty || 1), 0);
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#120a1e",
+          border: "1px solid #3a1a5a",
+          borderRadius: 12,
+          padding: "22px 24px 20px",
+          width: 460,
+          maxWidth: "95vw",
+          color: "#e0d0f0",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+          fontSize: 12,
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
+            EXPORT
+          </div>
+          <div style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", flex: 1, marginLeft: 10 }}>
+            {cards.length} unique card{cards.length !== 1 ? "s" : ""} · {totalCopies} total cop{totalCopies !== 1 ? "ies" : "y"}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+        </div>
+
+        <ExportOptionRow
+          icon="🖨"
+          title="Print / Save as PDF"
+          description="Opens the browser print dialog. Choose 'Save as PDF' to export a digital file, or send to a printer directly."
+          buttonLabel="Open Print Dialog"
+          onClick={() => window.print()}
+          busy={false}
+          done={false}
+        />
+
+        <div style={{ borderTop: "1px solid #1a1030", margin: "16px 0" }} />
+
+        <ExportOptionRow
+          icon="🖼"
+          title="Export Card Images"
+          description={`Downloads each unique card as a high-res PNG. One file per unique design, named by card.`}
+          buttonLabel="Export Images"
+          onClick={handleExportImages}
+          busy={imgState.busy}
+          busyLabel={imgState.label}
+          done={imgState.done}
+        />
+        <label style={{
+          display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+          marginTop: 8, marginLeft: 42,
+          fontSize: 11, color: bleed ? "#c4a4ff" : "#5a4a7a",
+          fontFamily: "'Crimson Text', serif",
+          userSelect: "none",
+        }}>
+          <input
+            type="checkbox" checked={bleed} onChange={e => setBleed(e.target.checked)}
+            style={{ accentColor: "#8b5cf6", width: 13, height: 13, cursor: "pointer" }}
+          />
+          Add bleed (3mm per side — 2.736×3.736″ total)
+          <span style={{ color: "#3a2a5a", fontSize: 10 }}>
+            {bleed
+              ? `${FULL_W * 3}×${FULL_H * 3}px`
+              : `${CARD_W * 3}×${CARD_H * 3}px`}
+          </span>
+        </label>
+
+        <div style={{ borderTop: "1px solid #1a1030", margin: "16px 0" }} />
+
+        <ExportOptionRow
+          icon="📋"
+          title="Export MPC Fill XML"
+          description="Generates an XML order file for MPC Fill (makeplayingcards.com). Export images first, then load both into MPC Fill to place your order."
+          buttonLabel="Export XML"
+          onClick={handleExportXml}
+          busy={false}
+          done={xmlDone}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Default settings ───────────────────────────────────────────────────────────
 
 const DEFAULTS = {
   artOpacity:        0.45,  // 0–1: how visible the art image is
-  overlayOpacity:    0.85,   // 0–1: strength of the color gradient wash over art
-  vignetteOpacity:   0.75,   // 0–1: darkness of the radial edge vignette
+  overlayOpacity:    0.85,  // 0–1: strength of the color gradient wash over art
+  vignetteOpacity:   0.75,  // 0–1: darkness of the radial edge vignette
   fontScale:         1.3,   // 0.5–1.5x: card text size multiplier
   flipBottomDefault: true,  // true = bottom face rotated 180°, false = upright
-  uiScale:           1.5,   // 0.75–2.0x: overall UI zoom level
+  uiScale:           1.7,   // 0.75–2.0x: overall UI zoom level
+  showBorder:        false, // false = borderless (art to edge); true = card frame outline
 };
 
 // ── App ────────────────────────────────────────────────────────────────────────
@@ -776,6 +1184,8 @@ export default function App() {
   const [showBulk, setShowBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [visualizeBleed, setVisualizeBleed] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [rotatedIds, setRotatedIds] = useState(new Set());
   const toggleRotate = id => setRotatedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -785,6 +1195,7 @@ export default function App() {
   const [fontScale, setFontScale] = useState(DEFAULTS.fontScale);
   const [flipBottomDefault, setFlipBottomDefault] = useState(DEFAULTS.flipBottomDefault);
   const [uiScale, setUiScale] = useState(DEFAULTS.uiScale);
+  const [showBorder, setShowBorder] = useState(DEFAULTS.showBorder);
   const fileInputRef = useRef();
 
   async function processEntries(entries) {
@@ -858,7 +1269,8 @@ export default function App() {
     setVignetteOpacity(s.vignetteOpacity);
     setFontScale(s.fontScale);
     setFlipBottomDefault(s.flipBottomDefault);
-    setUiScale(s.uiScale ?? 1.0);
+    setUiScale(s.uiScale ?? DEFAULTS.uiScale);
+    setShowBorder(s.showBorder ?? DEFAULTS.showBorder);
     setShowSettingsModal(false);
   }
 
@@ -877,7 +1289,7 @@ export default function App() {
     Array.from({ length: c.qty || 1 }, (_, i) => ({ ...c, printId: `${c.id}-${i}` }))
   );
 
-  const opacityProps = { artOpacity, overlayOpacity, vignetteOpacity, fontScale };
+  const opacityProps = { artOpacity, overlayOpacity, vignetteOpacity, fontScale, showBorder };
 
   return (
     <div style={{
@@ -925,10 +1337,10 @@ export default function App() {
             fontSize: 24, fontWeight: 700, margin: "0 0 4px",
             color: "#c4a4ff", letterSpacing: "0.08em",
             textShadow: "0 0 20px rgba(140,90,240,0.4)",
-          }}>⚑ DualProxy</h1>
+          }}>DualProxy</h1>
           <p style={{ margin: "0 0 18px", fontSize: 13, color: "#8070a0", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
-            <b>Create beautiful Magic: The Gathering proxy cards with ease.</b><br></br>
-            Try Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br> Create the perfect proxy with custom art, oracle text edits, and more. Print on standard 8.5×11" paper, cut out, and sleeve together for the full effect.
+            <b>Create beautiful Magic: The Gathering placeholder and playtest cards with ease.</b><br></br>
+            Make substitutes for Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br>
           </p>
 
           {/* Single add row */}
@@ -955,12 +1367,18 @@ export default function App() {
             <button onClick={() => setShowBulk(s => !s)} style={{ ...btnBase, background: showBulk ? "#1e40af" : "#1d4ed8" }}>
               ☰ Bulk
             </button>
+            <button
+              onClick={() => setVisualizeBleed(v => !v)}
+              title="Toggle bleed preview"
+              style={{ ...btnBase, background: visualizeBleed ? "#7c2d12" : "#2a1a4a", border: `1px solid ${visualizeBleed ? "#ea580c" : "#4a2a7a"}` }}>
+              ✂ Bleed
+            </button>
             <button onClick={() => setShowSettingsModal(true)} style={{ ...btnBase, background: "#2a1a4a", border: "1px solid #4a2a7a" }}>
               ⚙ Settings
             </button>
             {cards.length > 0 && (
-              <button onClick={() => window.print()} style={{ ...btnBase, background: "#15803d" }}>
-                🖨 Print All
+              <button onClick={() => setShowExportModal(true)} style={{ ...btnBase, background: "#15803d" }}>
+                ⬆ Export
               </button>
             )}
           </div>
@@ -1020,18 +1438,38 @@ export default function App() {
           {cards.map(c => (
             <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               {/* Card + overlay buttons */}
-              <div style={{ position: "relative", width: CARD_W }}>
-                <div style={{ transform: rotatedIds.has(c.id) ? "rotate(180deg)" : "none", transition: "transform 0.3s ease" }}>
-                  <ProxyCard
-                    topFace={c.topFace} bottomFace={c.bottomFace}
-                    topPalette={c.topPalette} bottomPalette={c.botPalette}
-                    topArt={c.topArt} bottomArt={c.bottomArt}
-                    flipBottom={c.flipBottom ?? flipBottomDefault}
-                    artOpacity={c.artOpacity ?? artOpacity}
-                    overlayOpacity={c.overlayOpacity ?? overlayOpacity}
-                    vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
-                    fontScale={c.fontScale ?? fontScale}
-                  />
+              <div style={{ position: "relative", width: visualizeBleed ? FULL_W : CARD_W }}>
+                {/* When visualizeBleed=false: clip to trim size so layout is stable.
+                    When visualizeBleed=true: show full bleed area with cut line guide. */}
+                <div style={{
+                  width: visualizeBleed ? FULL_W : CARD_W,
+                  height: visualizeBleed ? FULL_H : CARD_H,
+                  overflow: "hidden",
+                  borderRadius: 12,
+                  position: "relative",
+                }}>
+                  <div style={{
+                    position: "absolute",
+                    top: visualizeBleed ? 0 : -BLEED_PX,
+                    left: visualizeBleed ? 0 : -BLEED_PX,
+                    transform: rotatedIds.has(c.id) ? "rotate(180deg)" : "none",
+                    transformOrigin: "center center",
+                    transition: "transform 0.3s ease",
+                  }}>
+                    <ProxyCard
+                      topFace={c.topFace} bottomFace={c.bottomFace}
+                      topPalette={c.topPalette} bottomPalette={c.botPalette}
+                      topArt={c.topArt} bottomArt={c.bottomArt}
+                      flipBottom={c.flipBottom ?? flipBottomDefault}
+                      artOpacity={c.artOpacity ?? artOpacity}
+                      overlayOpacity={c.overlayOpacity ?? overlayOpacity}
+                      vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
+                      fontScale={c.fontScale ?? fontScale}
+                      dividerLabel={c.dividerLabel} layout={c.layout}
+                      showBleed={visualizeBleed}
+                      showBorder={showBorder}
+                    />
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, justifyContent: "flex-end" }}>
                   <span style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", flex: 1 }}>
@@ -1088,10 +1526,19 @@ export default function App() {
         </div>
       </div>
 
+      {/* ── Export modal ── */}
+      {showExportModal && (
+        <ExportModal
+          cards={cards}
+          settings={{ artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottomDefault, showBorder }}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
+
       {/* ── Settings modal ── */}
       {showSettingsModal && (
         <SettingsModal
-          settings={{ artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottomDefault, uiScale }}
+          settings={{ artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottomDefault, uiScale, showBorder }}
           onApply={handleApplySettings}
           onCancel={() => setShowSettingsModal(false)}
         />
@@ -1122,16 +1569,20 @@ export default function App() {
       <div className="print-grid" style={{ display: "none" }}>
         {printCards.map(c => (
           <div key={c.printId} className="card-wrap">
-            <ProxyCard
-              topFace={c.topFace} bottomFace={c.bottomFace}
-              topPalette={c.topPalette} bottomPalette={c.botPalette}
-              topArt={c.topArt} bottomArt={c.bottomArt}
-              flipBottom={c.flipBottom ?? flipBottomDefault}
-              artOpacity={c.artOpacity ?? artOpacity}
-              overlayOpacity={c.overlayOpacity ?? overlayOpacity}
-              vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
-              fontScale={c.fontScale ?? fontScale}
-            />
+            <TrimmedCard>
+              <ProxyCard
+                topFace={c.topFace} bottomFace={c.bottomFace}
+                topPalette={c.topPalette} bottomPalette={c.botPalette}
+                topArt={c.topArt} bottomArt={c.bottomArt}
+                flipBottom={c.flipBottom ?? flipBottomDefault}
+                artOpacity={c.artOpacity ?? artOpacity}
+                overlayOpacity={c.overlayOpacity ?? overlayOpacity}
+                vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
+                fontScale={c.fontScale ?? fontScale}
+                dividerLabel={c.dividerLabel} layout={c.layout}
+                showBorder={showBorder}
+              />
+            </TrimmedCard>
           </div>
         ))}
       </div>
