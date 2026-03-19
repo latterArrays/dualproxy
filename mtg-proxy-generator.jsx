@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import posthog from "posthog-js";
+import "mana-font/css/mana.css";
 
 const CARD_W = 250;
 const CARD_H = 350;
 
-// Color identity → palette
 const COLOR_PALETTES = {
   W: { bg: ["#f5f0e8", "#e8ddc8"], accent: "#c8a84b", text: "#2a1f0e", border: "#d4b896", name: "Plains" },
   U: { bg: ["#1a2a4a", "#0d1a33"], accent: "#5ba3d9", text: "#d0e8ff", border: "#2a4a7a", name: "Island" },
@@ -21,19 +21,14 @@ function getPalette(colors) {
   return COLOR_PALETTES[colors[0]] || COLOR_PALETTES.C;
 }
 
-// Fancy mana symbol renderer
-function ManaSymbol({ symbol }) {
-  const s = symbol.replace(/[{}]/g, "");
-  const colors = { W: "#f5f0d0", U: "#5ba3d9", B: "#a070c0", R: "#ef4444", G: "#22c55e", C: "#a0a0c0" };
-  const bg = colors[s] || "#888";
+// Mana font pips (mana.andrewgioia.com — MIT licensed fan-made symbols)
+function ManaSymbol({ symbol, size = 9 }) {
+  const s = symbol.replace(/[{}]/g, "").toLowerCase();
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 14, height: 14, borderRadius: "50%",
-      background: bg, color: "#fff", fontSize: 8, fontWeight: "bold",
-      margin: "0 1px", verticalAlign: "middle", flexShrink: 0,
-      border: "1px solid rgba(0,0,0,0.3)", lineHeight: 1,
-    }}>{s}</span>
+    <i
+      className={`ms ms-cost ms-${s}`}
+      style={{ fontSize: size, verticalAlign: "middle", margin: "0 1px" }}
+    />
   );
 }
 
@@ -45,49 +40,46 @@ function renderManaText(text) {
   );
 }
 
-// Art background: real Scryfall art_crop at low opacity, with a color wash overlay
-function ArtBackground({ artUrl, palette, isTop }) {
-  if (!artUrl) return null;
+function ArtBackground({ artUrl, palette, isTop, artOpacity, overlayOpacity, vignetteOpacity }) {
   const bg0 = palette.bg[0];
   const bg1 = palette.bg[1];
   return (
     <>
-      {/* The actual card art, faint */}
-      <img
-        src={artUrl}
-        alt=""
-        style={{
-          position: "absolute", inset: 0,
-          width: "100%", height: "100%",
-          objectFit: "cover",
-          objectPosition: "center top",
-          opacity: 0.22,
-          pointerEvents: "none",
-          userSelect: "none",
-        }}
-      />
-      {/* Color-tinted gradient overlay to keep text legible and stay on-palette */}
+      {artUrl && (
+        <img
+          src={artUrl}
+          alt=""
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            objectPosition: "center top",
+            opacity: artOpacity,
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        />
+      )}
       <div style={{
         position: "absolute", inset: 0,
         background: `linear-gradient(${isTop ? "170deg" : "10deg"}, ${bg0}cc 0%, ${bg1}bb 60%, ${bg0}99 100%)`,
+        opacity: overlayOpacity,
         pointerEvents: "none",
       }} />
-      {/* Vignette at edges for depth */}
       <div style={{
         position: "absolute", inset: 0,
         background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.45) 100%)",
+        opacity: vignetteOpacity,
         pointerEvents: "none",
       }} />
     </>
   );
 }
 
-function CardFaceSection({ face, palette, isTop, artUrl }) {
+function CardFaceSection({ face, palette, isTop, artUrl, artOpacity, overlayOpacity, vignetteOpacity, fontScale = 1 }) {
   if (!face) return null;
   const manaCost = face.mana_cost || "";
   const manaParts = manaCost.match(/\{[^}]+\}/g) || [];
-  const typeLine = face.type_line || "";
-  const oracleText = face.oracle_text || "";
   const power = face.power;
   const toughness = face.toughness;
   const loyalty = face.loyalty;
@@ -101,9 +93,9 @@ function CardFaceSection({ face, palette, isTop, artUrl }) {
       display: "flex",
       flexDirection: "column",
     }}>
-      <ArtBackground artUrl={artUrl} palette={palette} isTop={isTop} />
+      <ArtBackground artUrl={artUrl} palette={palette} isTop={isTop}
+        artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
 
-      {/* Header: name + mana */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "5px 7px 3px",
@@ -111,7 +103,7 @@ function CardFaceSection({ face, palette, isTop, artUrl }) {
         position: "relative", zIndex: 1,
       }}>
         <div style={{
-          fontSize: 8.5, fontWeight: "700", color: palette.accent,
+          fontSize: 8.5 * fontScale, fontWeight: "700", color: palette.accent,
           fontFamily: "'Cinzel', serif",
           letterSpacing: "0.03em",
           flex: 1, minWidth: 0,
@@ -121,38 +113,40 @@ function CardFaceSection({ face, palette, isTop, artUrl }) {
         </div>
         {manaParts.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0, marginLeft: 4 }}>
-            {manaParts.map((m, i) => <ManaSymbol key={i} symbol={m} />)}
+            {manaParts.map((m, i) => <ManaSymbol key={i} symbol={m} size={9 * fontScale} />)}
           </div>
         )}
       </div>
 
-      {/* Type line */}
       <div style={{
-        fontSize: 7, color: palette.text, opacity: 0.75,
+        fontSize: 7 * fontScale, color: palette.text, opacity: 0.75,
         padding: "2px 7px",
         borderBottom: `1px solid ${palette.border}`,
         fontFamily: "'Crimson Text', serif",
         fontStyle: "italic",
         position: "relative", zIndex: 1,
       }}>
-        {typeLine}
+        {face.type_line || ""}
       </div>
 
-      {/* Oracle text */}
       <div style={{
         flex: 1, padding: "4px 7px",
-        fontSize: 7.2, lineHeight: 1.45,
+        fontSize: 7.2 * fontScale, lineHeight: 1.45,
         color: palette.text, opacity: 0.9,
         fontFamily: "'Crimson Text', serif",
         overflowY: "hidden",
         position: "relative", zIndex: 1,
       }}>
-        {oracleText.split("\n").map((line, i) => (
+        {(face.oracle_text || "").split("\n").map((line, i) => (
           <p key={i} style={{ margin: "0 0 3px" }}>{renderManaText(line)}</p>
         ))}
+        {face.flavor_text && (
+          <p style={{ margin: "4px 0 0", fontStyle: "italic", opacity: 0.6, borderTop: `1px solid ${palette.border}`, paddingTop: 3 }}>
+            {face.flavor_text}
+          </p>
+        )}
       </div>
 
-      {/* P/T or Loyalty */}
       {(power !== undefined || loyalty !== undefined) && (
         <div style={{
           display: "flex", justifyContent: "flex-end",
@@ -160,7 +154,7 @@ function CardFaceSection({ face, palette, isTop, artUrl }) {
           position: "relative", zIndex: 1,
         }}>
           <div style={{
-            fontSize: 8, fontWeight: "bold", color: palette.accent,
+            fontSize: 8 * fontScale, fontWeight: "bold", color: palette.accent,
             fontFamily: "'Cinzel', serif",
             background: `${palette.bg[1]}cc`,
             border: `1px solid ${palette.border}`,
@@ -174,7 +168,7 @@ function CardFaceSection({ face, palette, isTop, artUrl }) {
   );
 }
 
-function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bottomArt }) {
+function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bottomArt, artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottom = true }) {
   return (
     <div style={{
       width: CARD_W, height: CARD_H,
@@ -187,12 +181,11 @@ function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bot
       fontFamily: "'Crimson Text', serif",
       position: "relative",
     }}>
-      {/* Top face */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <CardFaceSection face={topFace} palette={topPalette} isTop={true} artUrl={topArt} />
+        <CardFaceSection face={topFace} palette={topPalette} isTop={true} artUrl={topArt}
+          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} fontScale={fontScale} />
       </div>
 
-      {/* Divider */}
       <div style={{
         height: 16,
         background: `linear-gradient(90deg, ${topPalette.border}, ${bottomPalette.border})`,
@@ -206,31 +199,68 @@ function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bot
         }}>✦ transforms ✦</div>
       </div>
 
-      {/* Bottom face (rotated 180°) */}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
-        transform: "rotate(180deg)",
+        transform: flipBottom ? "rotate(180deg)" : "none",
       }}>
-        <CardFaceSection face={bottomFace} palette={bottomPalette} isTop={false} artUrl={bottomArt} />
+        <CardFaceSection face={bottomFace} palette={bottomPalette} isTop={false} artUrl={bottomArt}
+          artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} fontScale={fontScale} />
       </div>
     </div>
   );
 }
 
-function LoadingSpinner() {
-  return (
-    <div style={{ textAlign: "center", padding: 20, color: "#a0a0c0" }}>
-      <div style={{
-        width: 32, height: 32, border: "3px solid #2a2a4a",
-        borderTopColor: "#8b5cf6", borderRadius: "50%",
-        animation: "spin 0.8s linear infinite",
-        margin: "0 auto 8px",
-      }} />
-      <div style={{ fontSize: 12 }}>Fetching card data...</div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
+// ── CSV / bulk parsing ─────────────────────────────────────────────────────────
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current); current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
 }
+
+function parseManaboxCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) throw new Error("CSV appears empty");
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+  const nameIdx = headers.findIndex(h => h === "name");
+  const qtyIdx = headers.findIndex(h => ["quantity", "qty", "count", "amount"].includes(h));
+  if (nameIdx === -1) throw new Error("No 'Name' column found — is this a Manabox CSV?");
+  return lines.slice(1).map(line => {
+    const fields = parseCSVLine(line);
+    const raw = fields[nameIdx]?.trim() || "";
+    // DFC: "Delver of Secrets // Insectile Aberration" → use first half for lookup
+    const name = raw.split(" // ")[0].trim();
+    const qty = qtyIdx >= 0 ? Math.max(1, parseInt(fields[qtyIdx]) || 1) : 1;
+    return name ? { name, qty } : null;
+  }).filter(Boolean);
+}
+
+function parseBulkText(text) {
+  return text.split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith("//") && !l.startsWith("#"))
+    .map(line => {
+      // "4x Card Name", "4× Card Name", "4 Card Name", or just "Card Name"
+      const m = line.match(/^(\d+)\s*[x×]?\s+(.+)$/i);
+      if (m && parseInt(m[1]) > 0 && m[2].trim()) return { qty: parseInt(m[1]), name: m[2].trim() };
+      return { qty: 1, name: line };
+    });
+}
+
+// ── Scryfall ───────────────────────────────────────────────────────────────────
 
 async function fetchCard(name) {
   const res = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
@@ -242,68 +272,612 @@ async function fetchCard(name) {
   return res.json();
 }
 
+function buildCardEntry(card) {
+  let topFace, bottomFace;
+  if (card.card_faces && card.card_faces.length >= 2) {
+    topFace = card.card_faces[0];
+    bottomFace = card.card_faces[1];
+  } else {
+    topFace = { ...card, name: card.name + " (Front)" };
+    bottomFace = { ...card, name: card.name + " (Back)", oracle_text: "(Single-faced card — no back face)", mana_cost: "" };
+  }
+  const getArt = (face, fallback) => face?.image_uris?.art_crop || fallback?.image_uris?.art_crop || null;
+  return {
+    id: Date.now() + Math.random(),
+    topFace, bottomFace,
+    topPalette: getPalette(topFace.colors || card.colors || []),
+    botPalette: getPalette(bottomFace.colors || card.colors || []),
+    topArt: getArt(topFace, card),
+    bottomArt: getArt(bottomFace, card),
+    cardName: card.name,
+    qty: 1,
+    flipBottom: null, // null = use global default
+    // Per-card appearance overrides (null = use global)
+    artOpacity: null,
+    overlayOpacity: null,
+    vignetteOpacity: null,
+    fontScale: null,
+  };
+}
+
+// ── Edit panel ─────────────────────────────────────────────────────────────────
+
+const inputStyle = {
+  width: "100%", padding: "4px 8px",
+  background: "#1a0f2a", border: "1px solid #4a2a7a",
+  borderRadius: 4, color: "#e0d0f0", fontSize: 11,
+  fontFamily: "'Crimson Text', serif",
+  outline: "none", boxSizing: "border-box", resize: "vertical",
+};
+
+function Field({ label, value, onChange, multiline }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 2, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>{label}</div>
+      {multiline
+        ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} style={inputStyle} />
+        : <input value={value} onChange={e => onChange(e.target.value)} style={inputStyle} />
+      }
+    </div>
+  );
+}
+
+function FaceFields({ label, face, setFace, art, setArt }) {
+  const f = (l, key, multiline) => (
+    <Field label={l} value={face[key] || ""} onChange={v => setFace(p => ({ ...p, [key]: v }))} multiline={multiline} />
+  );
+  return (
+    <>
+      <div style={{ fontSize: 9, color: "#7c3aed", fontFamily: "'Cinzel', serif", marginBottom: 6, letterSpacing: "0.06em" }}>{label}</div>
+      {f("Name", "name")}
+      {f("Mana Cost  (e.g. {2}{U})", "mana_cost")}
+      {f("Type Line", "type_line")}
+      {f("Oracle Text", "oracle_text", true)}
+      {f("Flavor Text", "flavor_text", true)}
+      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+        <Field label="Power" value={face.power || ""} onChange={v => setFace(p => ({ ...p, power: v }))} />
+        <Field label="Toughness" value={face.toughness || ""} onChange={v => setFace(p => ({ ...p, toughness: v }))} />
+        <Field label="Loyalty" value={face.loyalty || ""} onChange={v => setFace(p => ({ ...p, loyalty: v }))} />
+      </div>
+      <Field label="Custom Art URL" value={art} onChange={setArt} />
+      <div style={{ borderTop: "1px solid #2a1a4a", margin: "10px 0 8px" }} />
+    </>
+  );
+}
+
+function FlipToggle({ label, value, onChange }) {
+  // value: null = default, true = flipped, false = upright
+  const options = [
+    { val: null,  label: "Default" },
+    { val: true,  label: "Flipped" },
+    { val: false, label: "Upright" },
+  ];
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 4, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>{label}</div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {options.map(o => (
+          <button key={String(o.val)} onClick={() => onChange(o.val)} style={{
+            flex: 1, padding: "4px 0", fontSize: 10, cursor: "pointer",
+            fontFamily: "'Cinzel', serif", borderRadius: 4,
+            background: value === o.val ? "#6d28d9" : "#1a0f2a",
+            border: value === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
+            color: value === o.val ? "#fff" : "#a080c0",
+          }}>{o.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OverrideSlider({ label, value, globalValue, onChange, min = 0, max = 1 }) {
+  const isOverridden = value !== null;
+  const effective = isOverridden ? value : globalValue;
+  const display = min === 0 && max === 1
+    ? `${Math.round(effective * 100)}%`
+    : `${effective.toFixed(2)}x`;
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+        <div style={{ fontSize: 11, color: "#a090c0", fontFamily: "'Crimson Text', serif", flex: 1 }}>
+          {label} <span style={{ color: "#c4a4ff" }}>{display}</span>
+          {!isOverridden && <span style={{ color: "#5a4a7a", fontSize: 9, marginLeft: 4 }}>(global)</span>}
+        </div>
+        {isOverridden && (
+          <button onClick={() => onChange(null)} style={{
+            background: "none", border: "none", color: "#5a4a7a", fontSize: 9,
+            cursor: "pointer", fontFamily: "'Cinzel', serif", padding: 0,
+          }}>reset</button>
+        )}
+      </div>
+      <input
+        type="range" min={min} max={max} step={0.01} value={effective}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ width: "100%", accentColor: isOverridden ? "#c4a4ff" : "#4a3a6a" }}
+      />
+    </div>
+  );
+}
+
+const editTabStyle = (active) => ({
+  flex: 1, padding: "6px 0", fontSize: 10, cursor: "pointer",
+  fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
+  background: active ? "#2a1a4a" : "transparent",
+  border: active ? "1px solid #4a2a7a" : "1px solid transparent",
+  borderBottom: active ? "1px solid #2a1a4a" : "1px solid #4a2a7a",
+  borderRadius: active ? "6px 6px 0 0" : "6px 6px 0 0",
+  color: active ? "#c4a4ff" : "#5a4a7a",
+  marginBottom: -1,
+  position: "relative", zIndex: active ? 1 : 0,
+});
+
+function EditModal({ card, onSave, onCancel, previewProps }) {
+  const [top, setTop] = useState({ ...card.topFace });
+  const [bot, setBot] = useState({ ...card.bottomFace });
+  const [topArt, setTopArt] = useState(card.topArt || "");
+  const [botArt, setBotArt] = useState(card.bottomArt || "");
+  const [qty, setQty] = useState(card.qty || 1);
+  const [flipBottom, setFlipBottom] = useState(card.flipBottom ?? null);
+  const [tab, setTab] = useState("text");
+
+  // Per-card appearance overrides
+  const [localArtOpacity, setLocalArtOpacity] = useState(card.artOpacity);
+  const [localOverlayOpacity, setLocalOverlayOpacity] = useState(card.overlayOpacity);
+  const [localVignetteOpacity, setLocalVignetteOpacity] = useState(card.vignetteOpacity);
+  const [localFontScale, setLocalFontScale] = useState(card.fontScale);
+
+  const globals = previewProps;
+  const effectiveFlip = flipBottom ?? globals.flipBottomDefault;
+  const effectiveArt = localArtOpacity ?? globals.artOpacity;
+  const effectiveOverlay = localOverlayOpacity ?? globals.overlayOpacity;
+  const effectiveVignette = localVignetteOpacity ?? globals.vignetteOpacity;
+  const effectiveFont = localFontScale ?? globals.fontScale;
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#120a1e",
+          border: "1px solid #3a1a5a",
+          borderRadius: 12,
+          padding: "16px 16px 14px",
+          width: 540,
+          maxWidth: "95vw",
+          maxHeight: "92vh",
+          display: "flex",
+          flexDirection: "column",
+          fontSize: 11,
+          color: "#e0d0f0",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            EDIT — {card.cardName}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 9, color: "#8070a0", fontFamily: "'Cinzel', serif" }}>Qty</span>
+              <input
+                type="number" min={1} max={20} value={qty}
+                onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ ...inputStyle, width: 48, padding: "2px 6px", fontSize: 11, textAlign: "center" }}
+              />
+            </div>
+            <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+          </div>
+        </div>
+
+        {/* Preview — always visible at top */}
+        <div className="edit-preview-row" style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 16, marginBottom: 12, flexShrink: 0 }}>
+          <ProxyCard
+            topFace={top} bottomFace={bot}
+            topPalette={getPalette(top.colors || [])}
+            bottomPalette={getPalette(bot.colors || [])}
+            topArt={topArt || card.topArt}
+            bottomArt={botArt || card.bottomArt}
+            artOpacity={effectiveArt} overlayOpacity={effectiveOverlay}
+            vignetteOpacity={effectiveVignette} fontScale={effectiveFont}
+            flipBottom={effectiveFlip}
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8 }}>
+            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
+            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Crimson Text', serif" }}>
+              Top ▲
+            </div>
+            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Crimson Text', serif" }}>
+              Bottom {effectiveFlip ? "↻ flipped" : "↕ upright"}
+            </div>
+            <FlipToggle label="" value={flipBottom} onChange={setFlipBottom} />
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
+          <button style={editTabStyle(tab === "text")} onClick={() => setTab("text")}>Text & Fields</button>
+          <button style={editTabStyle(tab === "appearance")} onClick={() => setTab("appearance")}>Appearance</button>
+        </div>
+
+        {/* Tab content */}
+        <div className="edit-tab-content" style={{
+          flex: 1, minHeight: 0, overflowY: "auto",
+          border: "1px solid #4a2a7a", borderTop: "none",
+          borderRadius: "0 0 6px 6px",
+          padding: 12, background: "#2a1a4a22",
+        }}>
+          {tab === "text" && (
+            <>
+              <div className="face-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FaceFields label="▲ TOP FACE" face={top} setFace={setTop} art={topArt} setArt={setTopArt} />
+                <FaceFields label="▼ BOTTOM FACE" face={bot} setFace={setBot} art={botArt} setArt={setBotArt} />
+              </div>
+            </>
+          )}
+
+          {tab === "appearance" && (
+            <>
+              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>ART</div>
+              <OverrideSlider label="Art Visibility" value={localArtOpacity} globalValue={globals.artOpacity} onChange={setLocalArtOpacity} />
+              <OverrideSlider label="Color Wash" value={localOverlayOpacity} globalValue={globals.overlayOpacity} onChange={setLocalOverlayOpacity} />
+              <OverrideSlider label="Vignette" value={localVignetteOpacity} globalValue={globals.vignetteOpacity} onChange={setLocalVignetteOpacity} />
+
+              <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
+              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>TEXT</div>
+              <OverrideSlider label="Font Size" value={localFontScale} globalValue={globals.fontScale} onChange={setLocalFontScale} min={0.5} max={1.5} />
+
+              <div style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 8 }}>
+                Per-card overrides. Click "reset" to use global settings.
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexShrink: 0 }}>
+          <button
+            onClick={() => onSave({
+              topFace: top, bottomFace: bot,
+              topArt: topArt || null, bottomArt: botArt || null,
+              qty, flipBottom,
+              topPalette: getPalette(top.colors || []),
+              botPalette: getPalette(bot.colors || []),
+              artOpacity: localArtOpacity,
+              overlayOpacity: localOverlayOpacity,
+              vignetteOpacity: localVignetteOpacity,
+              fontScale: localFontScale,
+            })}
+            style={{ flex: 1, padding: "8px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            Save
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ padding: "8px 16px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Settings modal ─────────────────────────────────────────────────────────────
+
+const SAMPLE_CARD_NAME = "Delver of Secrets";
+
+function SettingsModal({ settings, onApply, onCancel }) {
+  const [local, setLocal] = useState({ ...settings });
+  const [sample, setSample] = useState(null);
+
+  const set = key => val => setLocal(p => ({ ...p, [key]: val }));
+  const setUiScale = val => set("uiScale")(val);
+
+  useEffect(() => {
+    fetchCard(SAMPLE_CARD_NAME)
+      .then(card => setSample(buildCardEntry(card)))
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#120a1e",
+          border: "1px solid #3a1a5a",
+          borderRadius: 12,
+          padding: 24,
+          width: 680,
+          maxWidth: "95vw",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          fontSize: 11,
+          color: "#e0d0f0",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexShrink: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
+            ⚙ SETTINGS
+          </div>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ display: "flex", gap: 24, overflow: "hidden", flex: 1, minHeight: 0 }}>
+
+          {/* Controls */}
+          <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>ART</div>
+            <Slider label="Art Visibility"  value={local.artOpacity}     onChange={set("artOpacity")}     />
+            <Slider label="Color Wash"       value={local.overlayOpacity} onChange={set("overlayOpacity")} />
+            <Slider label="Vignette"         value={local.vignetteOpacity} onChange={set("vignetteOpacity")} />
+
+            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
+            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>TEXT</div>
+            <Slider label="Font Size" value={local.fontScale} onChange={set("fontScale")} min={0.5} max={1.5} />
+
+            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
+            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>INTERFACE</div>
+            <Slider label="UI Scale" value={local.uiScale || DEFAULTS.uiScale} onChange={set("uiScale")} min={0.75} max={2.0} />
+
+            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
+            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 10, letterSpacing: "0.06em" }}>CARD LAYOUT</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif" }}>Bottom face orientation</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[{ val: true, label: "Flipped" }, { val: false, label: "Upright" }].map(o => (
+                  <button key={String(o.val)} onClick={() => set("flipBottomDefault")(o.val)} style={{
+                    padding: "4px 12px", fontSize: 11, cursor: "pointer",
+                    fontFamily: "'Cinzel', serif", borderRadius: 4,
+                    background: local.flipBottomDefault === o.val ? "#6d28d9" : "#1a0f2a",
+                    border: local.flipBottomDefault === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
+                    color: local.flipBottomDefault === o.val ? "#fff" : "#a080c0",
+                  }}>{o.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 12 }}>
+              Tip: lower Color Wash + higher Art Visibility for a more painterly look.
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
+            {sample ? (
+              <ProxyCard
+                topFace={sample.topFace} bottomFace={sample.bottomFace}
+                topPalette={sample.topPalette} bottomPalette={sample.botPalette}
+                topArt={sample.topArt} bottomArt={sample.bottomArt}
+                artOpacity={local.artOpacity}
+                overlayOpacity={local.overlayOpacity}
+                vignetteOpacity={local.vignetteOpacity}
+                fontScale={local.fontScale}
+                flipBottom={local.flipBottomDefault}
+              />
+            ) : (
+              <div style={{
+                width: CARD_W, height: CARD_H,
+                borderRadius: 12, border: "1px solid #2a1a4a",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#3a2a5a", fontSize: 12, fontFamily: "'Crimson Text', serif",
+              }}>
+                <LoadingSpinner />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer buttons */}
+        <div style={{ display: "flex", gap: 8, marginTop: 20, flexShrink: 0 }}>
+          <button
+            onClick={() => onApply(local)}
+            style={{ flex: 1, padding: "9px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            Apply Changes
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "9px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Settings slider ─────────────────────────────────────────────────────────────
+
+function Slider({ label, value, onChange, min = 0, max = 1 }) {
+  const display = min === 0 && max === 1
+    ? `${Math.round(value * 100)}%`
+    : `${value.toFixed(2)}x`;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif", width: 160 }}>
+        {label} <span style={{ color: "#c4a4ff" }}>{display}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={0.01} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ flex: 1, accentColor: "#8b5cf6" }}
+      />
+    </div>
+  );
+}
+
+// ── Loading ────────────────────────────────────────────────────────────────────
+
+function LoadingSpinner({ progress }) {
+  return (
+    <div style={{ textAlign: "center", padding: 20, color: "#a0a0c0" }}>
+      <div style={{
+        width: 32, height: 32, border: "3px solid #2a2a4a",
+        borderTopColor: "#8b5cf6", borderRadius: "50%",
+        animation: "spin 0.8s linear infinite",
+        margin: "0 auto 8px",
+      }} />
+      <div style={{ fontSize: 12 }}>
+        {progress ? `Fetching card ${progress.done + 1} of ${progress.total}…` : "Fetching card data…"}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── Default settings ───────────────────────────────────────────────────────────
+
+const DEFAULTS = {
+  artOpacity:        0.45,  // 0–1: how visible the art image is
+  overlayOpacity:    0.85,   // 0–1: strength of the color gradient wash over art
+  vignetteOpacity:   0.75,   // 0–1: darkness of the radial edge vignette
+  fontScale:         1.3,   // 0.5–1.5x: card text size multiplier
+  flipBottomDefault: true,  // true = bottom face rotated 180°, false = upright
+  uiScale:           1.5,   // 0.75–2.0x: overall UI zoom level
+};
+
+// ── App ────────────────────────────────────────────────────────────────────────
+
+const btnBase = {
+  border: "none", borderRadius: 8, color: "#fff",
+  fontSize: 14, fontWeight: 600, cursor: "pointer",
+  fontFamily: "'Cinzel', serif", letterSpacing: "0.05em",
+  transition: "background 0.15s",
+  padding: "9px 18px",
+};
+
 export default function App() {
   const [cardName, setCardName] = useState("");
-  const [cards, setCards] = useState([]); // [{topFace, bottomFace, topPalette, bottomPalette, id}]
+  const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [error, setError] = useState("");
-  const printRef = useRef();
+  const [importError, setImportError] = useState("");
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [rotatedIds, setRotatedIds] = useState(new Set());
+  const toggleRotate = id => setRotatedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const [artOpacity, setArtOpacity] = useState(DEFAULTS.artOpacity);
+  const [overlayOpacity, setOverlayOpacity] = useState(DEFAULTS.overlayOpacity);
+  const [vignetteOpacity, setVignetteOpacity] = useState(DEFAULTS.vignetteOpacity);
+  const [fontScale, setFontScale] = useState(DEFAULTS.fontScale);
+  const [flipBottomDefault, setFlipBottomDefault] = useState(DEFAULTS.flipBottomDefault);
+  const [uiScale, setUiScale] = useState(DEFAULTS.uiScale);
+  const fileInputRef = useRef();
+
+  async function processEntries(entries) {
+    const newCards = [];
+    for (let i = 0; i < entries.length; i++) {
+      setProgress({ done: i, total: entries.length });
+      try {
+        const card = await fetchCard(entries[i].name);
+        newCards.push({ ...buildCardEntry(card), qty: entries[i].qty });
+        posthog.capture("card_added", { card_name: entries[i].name, source: "bulk" });
+      } catch (e) {
+        console.warn(e.message);
+      }
+      if (i < entries.length - 1) await new Promise(r => setTimeout(r, 80));
+    }
+    setProgress(null);
+    return newCards;
+  }
 
   async function handleAdd() {
     if (!cardName.trim()) return;
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const card = await fetchCard(cardName.trim());
-      const isDfc = card.card_faces && card.card_faces.length >= 2;
-      let topFace, bottomFace;
-
-      if (isDfc) {
-        topFace = card.card_faces[0];
-        bottomFace = card.card_faces[1];
-      } else {
-        // Single faced — duplicate with a note
-        topFace = { ...card, name: card.name + " (Front)", oracle_text: card.oracle_text || "" };
-        bottomFace = { ...card, name: card.name + " (Back)", oracle_text: "(No back face — single-faced card)", mana_cost: "" };
-      }
-
-      // Extract art_crop URLs — per-face if available, else fall back to card-level
-      const getArt = (face, fallback) =>
-        face?.image_uris?.art_crop || fallback?.image_uris?.art_crop || null;
-      const topArt = getArt(topFace, card);
-      const bottomArt = getArt(bottomFace, card);
-
-      const topColors = topFace.colors || card.colors || [];
-      const botColors = bottomFace.colors || card.colors || [];
-      const topPalette = getPalette(topColors);
-      const botPalette = getPalette(botColors);
-
-      setCards(prev => [...prev, {
-        id: Date.now(),
-        topFace, bottomFace, topPalette, botPalette,
-        topArt, bottomArt,
-        cardName: card.name,
-      }]);
-      posthog.capture("card_added", { card_name: card.name, is_dfc: isDfc });
+      setCards(prev => [...prev, buildCardEntry(card)]);
+      posthog.capture("card_added", { card_name: cardName.trim(), source: "single" });
       setCardName("");
     } catch (e) {
-      posthog.capture("card_search_failed", { card_name: cardName.trim(), error: e.message });
       setError(e.message);
     } finally {
       setLoading(false);
     }
   }
 
-  function handleRemove(id) {
-    const card = cards.find(c => c.id === id);
-    posthog.capture("card_removed", { card_name: card?.cardName });
-    setCards(prev => prev.filter(c => c.id !== id));
+  async function handleBulkImport() {
+    if (!bulkText.trim()) return;
+    setLoading(true); setImportError("");
+    try {
+      const entries = parseBulkText(bulkText);
+      const newCards = await processEntries(entries);
+      setCards(prev => [...prev, ...newCards]);
+      setBulkText(""); setShowBulk(false);
+    } catch (e) {
+      setImportError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handlePrint() {
-    posthog.capture("print_triggered", { card_count: cards.length });
-    window.print();
+  async function handleCSVImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true); setImportError("");
+    try {
+      const text = await file.text();
+      const entries = parseManaboxCSV(text);
+      const newCards = await processEntries(entries);
+      setCards(prev => [...prev, ...newCards]);
+      posthog.capture("csv_imported", { card_count: entries.length });
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setLoading(false);
+      e.target.value = "";
+    }
   }
+
+  function handleApplySettings(s) {
+    setArtOpacity(s.artOpacity);
+    setOverlayOpacity(s.overlayOpacity);
+    setVignetteOpacity(s.vignetteOpacity);
+    setFontScale(s.fontScale);
+    setFlipBottomDefault(s.flipBottomDefault);
+    setUiScale(s.uiScale ?? 1.0);
+    setShowSettingsModal(false);
+  }
+
+  function handleRemove(id) {
+    setCards(prev => prev.filter(c => c.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
+
+  function handleSaveEdit(id, updates) {
+    setCards(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    setEditingId(null);
+  }
+
+  // For print: expand qty copies per card
+  const printCards = cards.flatMap(c =>
+    Array.from({ length: c.qty || 1 }, (_, i) => ({ ...c, printId: `${c.id}-${i}` }))
+  );
+
+  const opacityProps = { artOpacity, overlayOpacity, vignetteOpacity, fontScale };
 
   return (
     <div style={{
@@ -311,161 +885,255 @@ export default function App() {
       background: "linear-gradient(135deg, #0a0a14 0%, #0d0a1a 50%, #0a0f0a 100%)",
       fontFamily: "'Cinzel', serif",
       color: "#e0d0f0",
+      zoom: uiScale,
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
-
         * { box-sizing: border-box; }
+        input[type=range] { cursor: pointer; }
+        input::placeholder, textarea::placeholder { color: #4a3a6a; opacity: 1; }
 
-        .add-btn:hover { background: #7c3aed !important; }
-        .remove-btn:hover { opacity: 1 !important; }
-        .print-btn:hover { background: #166534 !important; }
+        @media (max-width: 560px) {
+          .edit-tab-content .face-grid { grid-template-columns: 1fr !important; }
+          .edit-preview-row { flex-direction: column !important; align-items: center !important; }
+        }
 
         @media print {
-          body { background: white !important; }
+          body { background: white !important; margin: 0; }
           .no-print { display: none !important; }
+          .screen-grid { display: none !important; }
           .print-grid {
             display: grid !important;
-            grid-template-columns: repeat(3, ${CARD_W}px) !important;
-            gap: 8px !important;
-            padding: 16px !important;
-            background: white !important;
+            grid-template-columns: repeat(3, ${CARD_W}px);
+            gap: 8px;
+            padding: 12px;
+            background: white;
           }
-          .card-wrap { break-inside: avoid !important; }
+          .card-wrap { break-inside: avoid; }
         }
       `}</style>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="no-print" style={{
-        padding: "28px 32px 20px",
+        padding: "24px 32px 20px",
         borderBottom: "1px solid #2a1a4a",
         background: "rgba(30,10,50,0.6)",
         backdropFilter: "blur(10px)",
       }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
           <h1 style={{
-            fontSize: 26, fontWeight: 700, margin: "0 0 4px",
-            color: "#c4a4ff",
-            letterSpacing: "0.08em",
+            fontSize: 24, fontWeight: 700, margin: "0 0 4px",
+            color: "#c4a4ff", letterSpacing: "0.08em",
             textShadow: "0 0 20px rgba(140,90,240,0.4)",
-          }}>⚑ Cube Proxy Generator</h1>
-          <p style={{
-            margin: "0 0 20px", fontSize: 13, color: "#8070a0",
-            fontFamily: "'Crimson Text', serif", fontStyle: "italic",
-          }}>
-            Double-faced & transforming cards — both sides visible, no sleeve-flipping required.
+          }}>⚑ DualProxy</h1>
+          <p style={{ margin: "0 0 18px", fontSize: 13, color: "#8070a0", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
+            <b>Create beautiful Magic: The Gathering proxy cards with ease.</b><br></br>
+            Try Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br> Create the perfect proxy with custom art, oracle text edits, and more. Print on standard 8.5×11" paper, cut out, and sleeve together for the full effect.
           </p>
 
-          {/* Input */}
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          {/* Single add row */}
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
               <input
                 value={cardName}
                 onChange={e => setCardName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAdd()}
-                placeholder="Enter card name (e.g. Delver of Secrets)"
+                placeholder="Card name (e.g. Delver of Secrets)"
                 style={{
-                  width: "100%", padding: "10px 14px",
+                  width: "100%", padding: "9px 13px",
                   background: "#1a0f2a", border: "1px solid #4a2a7a",
                   borderRadius: 8, color: "#e0d0f0", fontSize: 14,
-                  fontFamily: "'Crimson Text', serif",
-                  outline: "none",
+                  fontFamily: "'Crimson Text', serif", outline: "none",
                 }}
               />
-              {error && (
-                <div style={{ fontSize: 12, color: "#f87171", marginTop: 6, fontFamily: "'Crimson Text', serif" }}>
-                  ⚠ {error}
-                </div>
-              )}
+              {error && <div style={{ fontSize: 12, color: "#f87171", marginTop: 5, fontFamily: "'Crimson Text', serif" }}>⚠ {error}</div>}
             </div>
-            <button
-              className="add-btn"
-              onClick={handleAdd}
-              disabled={loading}
-              style={{
-                padding: "10px 20px", background: "#6d28d9",
-                border: "none", borderRadius: 8, color: "#fff",
-                fontSize: 14, fontWeight: 600, cursor: "pointer",
-                fontFamily: "'Cinzel', serif", letterSpacing: "0.05em",
-                transition: "background 0.2s",
-                opacity: loading ? 0.6 : 1,
-              }}>
-              + Add Card
+
+            <button onClick={handleAdd} disabled={loading} style={{ ...btnBase, background: "#6d28d9", opacity: loading ? 0.6 : 1 }}>
+              + Add
+            </button>
+            <button onClick={() => setShowBulk(s => !s)} style={{ ...btnBase, background: showBulk ? "#1e40af" : "#1d4ed8" }}>
+              ☰ Bulk
+            </button>
+            <button onClick={() => setShowSettingsModal(true)} style={{ ...btnBase, background: "#2a1a4a", border: "1px solid #4a2a7a" }}>
+              ⚙ Settings
             </button>
             {cards.length > 0 && (
-              <button
-                className="print-btn"
-                onClick={handlePrint}
-                style={{
-                  padding: "10px 20px", background: "#15803d",
-                  border: "none", borderRadius: 8, color: "#fff",
-                  fontSize: 14, fontWeight: 600, cursor: "pointer",
-                  fontFamily: "'Cinzel', serif", letterSpacing: "0.05em",
-                  transition: "background 0.2s",
-                }}>
+              <button onClick={() => window.print()} style={{ ...btnBase, background: "#15803d" }}>
                 🖨 Print All
               </button>
             )}
           </div>
 
-          <p style={{ fontSize: 11, color: "#5a4a7a", margin: "10px 0 0", fontFamily: "'Crimson Text', serif" }}>
-            Works with any double-faced, transforming, or modal DFC card. Data pulled live from Scryfall.
-          </p>
+          {/* Bulk import panel */}
+          {showBulk && (
+            <div style={{ marginTop: 12, background: "#0d0820", border: "1px solid #2a1a4a", borderRadius: 8, padding: 14 }}>
+              <div style={{ fontSize: 12, color: "#8070a0", marginBottom: 4, fontFamily: "'Crimson Text', serif" }}>
+                One card per line: <code style={{ color: "#c4a4ff" }}>4x Delver of Secrets</code> · <code style={{ color: "#c4a4ff" }}>2 Lightning Bolt</code> · <code style={{ color: "#c4a4ff" }}>Snapcaster Mage</code>
+              </div>
+              <textarea
+                value={bulkText}
+                onChange={e => setBulkText(e.target.value)}
+                placeholder={"4x Delver of Secrets\n2 Snapcaster Mage\nLightning Bolt"}
+                rows={6}
+                style={{
+                  width: "100%", padding: "8px 12px",
+                  background: "#1a0f2a", border: "1px solid #4a2a7a",
+                  borderRadius: 6, color: "#e0d0f0", fontSize: 12,
+                  fontFamily: "monospace", outline: "none", resize: "vertical",
+                }}
+              />
+              {importError && <div style={{ fontSize: 11, color: "#f87171", marginTop: 4 }}>⚠ {importError}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button onClick={handleBulkImport} disabled={loading} style={{ ...btnBase, background: "#6d28d9", fontSize: 12, padding: "7px 14px", opacity: loading ? 0.6 : 1 }}>
+                  Import List
+                </button>
+                <label style={{ ...btnBase, background: "#0f766e", fontSize: 12, padding: "7px 14px", cursor: "pointer", display: "inline-block" }}>
+                  📥 Manabox CSV
+                  <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCSVImport} style={{ display: "none" }} />
+                </label>
+                <span style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
+                  Also accepts Manabox CSV exports
+                </span>
+              </div>
+            </div>
+          )}
+
+
         </div>
       </div>
 
-      {/* Card Grid */}
-      <div ref={printRef} style={{
-        maxWidth: 900, margin: "0 auto",
-        padding: "28px 24px",
-      }}>
-        {loading && <LoadingSpinner />}
+      {/* ── Screen card grid ── */}
+      <div className="screen-grid" style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+        {loading && <LoadingSpinner progress={progress} />}
 
         {cards.length === 0 && !loading && (
-          <div style={{
-            textAlign: "center", padding: "60px 20px",
-            color: "#3a2a5a",
-          }}>
+          <div style={{ textAlign: "center", padding: "60px 20px", color: "#3a2a5a" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🃏</div>
             <div style={{ fontSize: 16, fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
-              Add a double-faced card to generate a proxy
+              Add a card above or bulk-import a list to get started
             </div>
           </div>
         )}
 
-        <div className="print-grid" style={{
-          display: "flex", flexWrap: "wrap", gap: 24,
-          justifyContent: "flex-start",
-        }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 28, justifyContent: "flex-start" }}>
           {cards.map(c => (
-            <div key={c.id} className="card-wrap" style={{ position: "relative" }}>
-              <ProxyCard
-                topFace={c.topFace}
-                bottomFace={c.bottomFace}
-                topPalette={c.topPalette}
-                bottomPalette={c.botPalette}
-                topArt={c.topArt}
-                bottomArt={c.bottomArt}
-              />
-              <button
-                className="remove-btn no-print"
-                onClick={() => handleRemove(c.id)}
-                style={{
-                  position: "absolute", top: -8, right: -8,
-                  width: 22, height: 22, borderRadius: "50%",
-                  background: "#7f1d1d", border: "none",
-                  color: "#fff", fontSize: 12, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  opacity: 0.7, transition: "opacity 0.2s",
-                }}>✕</button>
-              <div className="no-print" style={{
-                textAlign: "center", marginTop: 6,
-                fontSize: 10, color: "#5a4a7a",
-                fontFamily: "'Crimson Text', serif",
-              }}>{c.cardName}</div>
+            <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              {/* Card + overlay buttons */}
+              <div style={{ position: "relative", width: CARD_W }}>
+                <div style={{ transform: rotatedIds.has(c.id) ? "rotate(180deg)" : "none", transition: "transform 0.3s ease" }}>
+                  <ProxyCard
+                    topFace={c.topFace} bottomFace={c.bottomFace}
+                    topPalette={c.topPalette} bottomPalette={c.botPalette}
+                    topArt={c.topArt} bottomArt={c.bottomArt}
+                    flipBottom={c.flipBottom ?? flipBottomDefault}
+                    artOpacity={c.artOpacity ?? artOpacity}
+                    overlayOpacity={c.overlayOpacity ?? overlayOpacity}
+                    vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
+                    fontScale={c.fontScale ?? fontScale}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, justifyContent: "flex-end" }}>
+                  <span style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", flex: 1 }}>
+                    {c.cardName}
+                    {c.qty > 1 && <span style={{ color: "#8b5cf6", marginLeft: 4 }}>×{c.qty}</span>}
+                  </span>
+                  <button
+                    title="Flip"
+                    onClick={() => toggleRotate(c.id)}
+                    style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      background: rotatedIds.has(c.id) ? "#065f46" : "#1e1a3a",
+                      border: "1px solid #4a2a7a", color: "#6ee7b7",
+                      cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: 0,
+                    }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                  </button>
+                  <button
+                    title="Edit"
+                    onClick={() => setEditingId(id => id === c.id ? null : c.id)}
+                    style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      background: editingId === c.id ? "#6d28d9" : "#1e1a3a",
+                      border: "1px solid #4a2a7a", color: "#c4a4ff",
+                      cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: 0,
+                    }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button
+                    title="Remove"
+                    onClick={() => handleRemove(c.id)}
+                    style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      background: "#7f1d1d", border: "none", color: "#fff",
+                      fontSize: 11, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: 0,
+                    }}>✕</button>
+                </div>
+              </div>
+
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ── Settings modal ── */}
+      {showSettingsModal && (
+        <SettingsModal
+          settings={{ artOpacity, overlayOpacity, vignetteOpacity, fontScale, flipBottomDefault, uiScale }}
+          onApply={handleApplySettings}
+          onCancel={() => setShowSettingsModal(false)}
+        />
+      )}
+
+      {/* ── Edit modal ── */}
+      {editingId && (() => { const c = cards.find(x => x.id === editingId); return c ? (
+        <EditModal
+          card={c}
+          onSave={updates => handleSaveEdit(editingId, updates)}
+          onCancel={() => setEditingId(null)}
+          previewProps={{ ...opacityProps, flipBottomDefault }}
+        />
+      ) : null; })()}
+
+      {/* ── Footer ── */}
+      <div className="no-print" style={{
+        borderTop: "1px solid #1a0f2a",
+        padding: "14px 32px",
+        textAlign: "center",
+      }}>
+        <p style={{ fontSize: 11, color: "#3a2a5a", margin: 0, fontFamily: "'Crimson Text', serif" }}>
+          Data from Scryfall · Mana pips by <a href="https://mana.andrewgioia.com" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Andrew Gioia</a> (MIT)
+        </p>
+      </div>
+
+      {/* ── Print-only grid (expands qty copies) ── */}
+      <div className="print-grid" style={{ display: "none" }}>
+        {printCards.map(c => (
+          <div key={c.printId} className="card-wrap">
+            <ProxyCard
+              topFace={c.topFace} bottomFace={c.bottomFace}
+              topPalette={c.topPalette} bottomPalette={c.botPalette}
+              topArt={c.topArt} bottomArt={c.bottomArt}
+              flipBottom={c.flipBottom ?? flipBottomDefault}
+              artOpacity={c.artOpacity ?? artOpacity}
+              overlayOpacity={c.overlayOpacity ?? overlayOpacity}
+              vignetteOpacity={c.vignetteOpacity ?? vignetteOpacity}
+              fontScale={c.fontScale ?? fontScale}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
