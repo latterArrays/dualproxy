@@ -6,7 +6,7 @@ import "mana-font/css/mana.css";
 
 const CARD_W = 250;    // 2.5 inches at 100px/in — the trim/cut size
 const CARD_H = 350;    // 3.5 inches at 100px/in — the trim/cut size
-const BLEED_PX = 12;   // 3mm per side at 100px/in (2.953mm exact; rounds to 12px)
+const BLEED_PX = 13;   // ~3.3mm per side at 100px/in — MPC requires 1/8" (3.175mm); 13px gives 3.302mm, safely over the minimum
 const FULL_W = CARD_W + 2 * BLEED_PX;  // 274px — full print width including bleed
 const FULL_H = CARD_H + 2 * BLEED_PX;  // 374px — full print height including bleed
 // Export scale: 6 = double the 822×1122 reference → 1644×2244 px output (~600 DPI).
@@ -251,6 +251,21 @@ function ProxyCard({ topFace, bottomFace, topPalette, bottomPalette, topArt, bot
         <ArtBackground artUrl={bottomArt} palette={bottomPalette} isTop={false}
           artOpacity={artOpacity} overlayOpacity={overlayOpacity} vignetteOpacity={vignetteOpacity} />
       </div>
+
+      {/* ── BORDER BLEED FILL ───────────────────────────────────────────────── */}
+      {/* When showBorder is on, paint the border color over the entire bleed margin
+          so there's no art/gradient visible past the cut line. Uses an inset box-shadow
+          to fill exactly BLEED_PX inward from the outer edge. */}
+      {showBorder && (
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: 12 + BLEED_PX,
+          boxShadow: `inset 0 0 0 ${BLEED_PX}px #555`,
+          pointerEvents: "none",
+          zIndex: 2,
+        }} />
+      )}
 
       {/* ── CARD CHROME (at trim/cut boundary, transparent background) ──────── */}
       {/* overflow:visible so negative-margin lines inside can reach the bleed edge;
@@ -878,7 +893,7 @@ function SettingsModal({ settings, onApply, onCancel }) {
         </div>
 
         {/* Body */}
-        <div style={{ display: "flex", gap: 24, overflow: "hidden", flex: 1, minHeight: 0 }}>
+        <div className="settings-body" style={{ display: "flex", gap: 24, overflow: "auto", flex: 1, minHeight: 0 }}>
 
           {/* Controls */}
           <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
@@ -931,7 +946,7 @@ function SettingsModal({ settings, onApply, onCancel }) {
           </div>
 
           {/* Live preview */}
-          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+          <div className="settings-preview" style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
             {sample ? (
               <TrimmedCard>
@@ -1147,7 +1162,7 @@ function ExportModal({ cards, settings, onClose }) {
             type="checkbox" checked={bleed} onChange={e => setBleed(e.target.checked)}
             style={{ accentColor: "#8b5cf6", width: 13, height: 13, cursor: "pointer" }}
           />
-          Add bleed (3mm per side — 2.736×3.736″ total)
+          Add bleed (1/8″ per side — 2.76×3.76″ total)
           <span style={{ color: "#3a2a5a", fontSize: 10 }}>
             {bleed
               ? `${FULL_W * EXPORT_SCALE}×${FULL_H * EXPORT_SCALE}px`
@@ -1173,13 +1188,15 @@ function ExportModal({ cards, settings, onClose }) {
 
 // ── Default settings ───────────────────────────────────────────────────────────
 
+const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 768;
+
 const DEFAULTS = {
-  artOpacity:        0.45,  // 0–1: how visible the art image is
-  overlayOpacity:    0.85,  // 0–1: strength of the color gradient wash over art
-  vignetteOpacity:   0.75,  // 0–1: darkness of the radial edge vignette
+  artOpacity:        0.35,  // 0–1: how visible the art image is
+  overlayOpacity:    1.0,   // 0–1: strength of the color gradient wash over art
+  vignetteOpacity:   1.0,   // 0–1: darkness of the radial edge vignette
   fontScale:         1.3,   // 0.5–1.5x: card text size multiplier
-  flipBottomDefault: true,  // true = bottom face rotated 180°, false = upright
-  uiScale:           1.7,   // 0.75–2.0x: overall UI zoom level
+  flipBottomDefault: false, // true = bottom face rotated 180°, false = upright
+  uiScale:           isMobile() ? 1.0 : 1.5,   // 0.75–2.0x: overall UI zoom level
   showBorder:        false, // false = borderless (art to edge); true = card frame outline
 };
 
@@ -1216,6 +1233,14 @@ export default function App() {
   const [uiScale, setUiScale] = useState(DEFAULTS.uiScale);
   const [showBorder, setShowBorder] = useState(DEFAULTS.showBorder);
   const fileInputRef = useRef();
+
+  // Auto-detect mobile on mount and adjust uiScale if user hasn't changed it
+  const [hasManualScale, setHasManualScale] = useState(false);
+  useEffect(() => {
+    if (!hasManualScale && window.innerWidth <= 768) {
+      setUiScale(1.0);
+    }
+  }, []);
 
   async function processEntries(entries) {
     const newCards = [];
@@ -1311,7 +1336,7 @@ export default function App() {
   const opacityProps = { artOpacity, overlayOpacity, vignetteOpacity, fontScale, showBorder };
 
   return (
-    <div style={{
+    <div className="app-root" style={{
       minHeight: "100vh",
       background: "linear-gradient(135deg, #0a0a14 0%, #0d0a1a 50%, #0a0f0a 100%)",
       fontFamily: "'Cinzel', serif",
@@ -1327,6 +1352,30 @@ export default function App() {
         @media (max-width: 560px) {
           .edit-tab-content .face-grid { grid-template-columns: 1fr !important; }
           .edit-preview-row { flex-direction: column !important; align-items: center !important; }
+          .settings-body { flex-direction: column !important; }
+          .settings-preview { order: -1 !important; }
+        }
+
+        @media (max-width: 768px) {
+          .app-root { zoom: 1 !important; }
+          .app-header { padding: 16px 12px 14px !important; }
+          .header-inner { max-width: 100% !important; }
+          .header-title { font-size: 20px !important; }
+          .header-subtitle { font-size: 11px !important; margin-bottom: 12px !important; }
+          .add-row { flex-direction: column !important; gap: 8px !important; }
+          .add-row .card-input { min-width: 0 !important; width: 100% !important; flex: none !important; }
+          .btn-row {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+          .btn-row > button { font-size: 12px !important; padding: 8px 6px !important; width: 100% !important; }
+          .screen-grid { padding: 16px 8px !important; }
+          .card-grid { gap: 16px !important; justify-content: center !important; }
+          .bulk-panel { padding: 10px !important; }
+          .bulk-panel textarea { font-size: 11px !important; }
+          .app-footer { padding: 10px 12px !important; }
         }
 
         @media print {
@@ -1345,26 +1394,26 @@ export default function App() {
       `}</style>
 
       {/* ── Header ── */}
-      <div className="no-print" style={{
+      <div className="no-print app-header" style={{
         padding: "24px 32px 20px",
         borderBottom: "1px solid #2a1a4a",
         background: "rgba(30,10,50,0.6)",
         backdropFilter: "blur(10px)",
       }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <h1 style={{
+        <div className="header-inner" style={{ maxWidth: 960, margin: "0 auto" }}>
+          <h1 className="header-title" style={{
             fontSize: 24, fontWeight: 700, margin: "0 0 4px",
             color: "#c4a4ff", letterSpacing: "0.08em",
             textShadow: "0 0 20px rgba(140,90,240,0.4)",
           }}>DualProxy</h1>
-          <p style={{ margin: "0 0 18px", fontSize: 13, color: "#8070a0", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
+          <p className="header-subtitle" style={{ margin: "0 0 18px", fontSize: 13, color: "#8070a0", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
             <b>Create beautiful Magic: The Gathering placeholder and playtest cards with ease.</b><br></br>
             Make substitutes for Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br>
           </p>
 
           {/* Single add row */}
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 220 }}>
+          <div className="add-row" style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div className="card-input" style={{ flex: 1, minWidth: 220 }}>
               <input
                 value={cardName}
                 onChange={e => setCardName(e.target.value)}
@@ -1380,31 +1429,33 @@ export default function App() {
               {error && <div style={{ fontSize: 12, color: "#f87171", marginTop: 5, fontFamily: "'Crimson Text', serif" }}>⚠ {error}</div>}
             </div>
 
-            <button onClick={handleAdd} disabled={loading} style={{ ...btnBase, background: "#6d28d9", opacity: loading ? 0.6 : 1 }}>
-              + Add
-            </button>
-            <button onClick={() => setShowBulk(s => !s)} style={{ ...btnBase, background: showBulk ? "#1e40af" : "#1d4ed8" }}>
-              ☰ Bulk
-            </button>
-            <button
-              onClick={() => setVisualizeBleed(v => !v)}
-              title="Toggle bleed preview"
-              style={{ ...btnBase, background: visualizeBleed ? "#7c2d12" : "#2a1a4a", border: `1px solid ${visualizeBleed ? "#ea580c" : "#4a2a7a"}` }}>
-              ✂ Bleed
-            </button>
-            <button onClick={() => setShowSettingsModal(true)} style={{ ...btnBase, background: "#2a1a4a", border: "1px solid #4a2a7a" }}>
-              ⚙ Settings
-            </button>
-            {cards.length > 0 && (
-              <button onClick={() => setShowExportModal(true)} style={{ ...btnBase, background: "#15803d" }}>
-                ⬆ Export
+            <div className="btn-row" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={handleAdd} disabled={loading} style={{ ...btnBase, background: "#6d28d9", opacity: loading ? 0.6 : 1 }}>
+                + Add
               </button>
-            )}
+              <button onClick={() => setShowBulk(s => !s)} style={{ ...btnBase, background: showBulk ? "#1e40af" : "#1d4ed8" }}>
+                ☰ Bulk
+              </button>
+              <button
+                onClick={() => setVisualizeBleed(v => !v)}
+                title="Toggle bleed preview"
+                style={{ ...btnBase, background: visualizeBleed ? "#7c2d12" : "#2a1a4a", border: `1px solid ${visualizeBleed ? "#ea580c" : "#4a2a7a"}` }}>
+                ✂ Bleed
+              </button>
+              <button onClick={() => setShowSettingsModal(true)} style={{ ...btnBase, background: "#2a1a4a", border: "1px solid #4a2a7a" }}>
+                ⚙ Settings
+              </button>
+              {cards.length > 0 && (
+                <button onClick={() => setShowExportModal(true)} style={{ ...btnBase, background: "#15803d" }}>
+                  ⬆ Export
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Bulk import panel */}
           {showBulk && (
-            <div style={{ marginTop: 12, background: "#0d0820", border: "1px solid #2a1a4a", borderRadius: 8, padding: 14 }}>
+            <div className="bulk-panel" style={{ marginTop: 12, background: "#0d0820", border: "1px solid #2a1a4a", borderRadius: 8, padding: 14 }}>
               <div style={{ fontSize: 12, color: "#8070a0", marginBottom: 4, fontFamily: "'Crimson Text', serif" }}>
                 One card per line: <code style={{ color: "#c4a4ff" }}>4x Delver of Secrets</code> · <code style={{ color: "#c4a4ff" }}>2 Lightning Bolt</code> · <code style={{ color: "#c4a4ff" }}>Snapcaster Mage</code>
               </div>
@@ -1453,7 +1504,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 28, justifyContent: "flex-start" }}>
+        <div className="card-grid" style={{ display: "flex", flexWrap: "wrap", gap: 28, justifyContent: "flex-start" }}>
           {cards.map(c => (
             <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               {/* Card + overlay buttons */}
@@ -1574,7 +1625,7 @@ export default function App() {
       ) : null; })()}
 
       {/* ── Footer ── */}
-      <div className="no-print" style={{
+      <div className="no-print app-footer" style={{
         borderTop: "1px solid #1a0f2a",
         padding: "14px 32px",
         textAlign: "center",
