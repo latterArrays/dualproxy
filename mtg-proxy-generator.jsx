@@ -665,7 +665,8 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const [qty, setQty] = useState(card.qty || 1);
   const [flipBottom, setFlipBottom] = useState(card.flipBottom ?? null);
   const [dividerLabel, setDividerLabel] = useState(card.dividerLabel ?? "");
-  const [tab, setTab] = useState("text");
+  const [tab, setTab] = useState("look");
+  const [textFace, setTextFace] = useState("top");
 
   // Per-card appearance overrides
   const [localArtOpacity, setLocalArtOpacity] = useState(card.artOpacity);
@@ -679,13 +680,17 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const effectiveOverlay = localOverlayOpacity ?? globals.overlayOpacity;
   const effectiveVignette = localVignetteOpacity ?? globals.vignetteOpacity;
   const effectiveFont = localFontScale ?? globals.fontScale;
+  const isMobile = window.innerWidth < 600;
+  const previewScale = isMobile ? 0.58 : 1;
 
   return (
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
         background: "rgba(0,0,0,0.75)",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex",
+        alignItems: isMobile ? "flex-end" : "center",
+        justifyContent: "center",
         backdropFilter: "blur(4px)",
       }}
       onClick={onCancel}
@@ -695,16 +700,16 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
         style={{
           background: "#120a1e",
           border: "1px solid #3a1a5a",
-          borderRadius: 12,
-          padding: "16px 16px 14px",
-          width: 540,
-          maxWidth: "95vw",
-          maxHeight: "92vh",
+          borderRadius: isMobile ? "14px 14px 0 0" : 12,
+          padding: isMobile ? "14px 14px 24px" : "16px 16px 14px",
+          width: isMobile ? "100vw" : 480,
+          maxWidth: "100vw",
+          maxHeight: isMobile ? "93vh" : "92vh",
           display: "flex",
           flexDirection: "column",
           fontSize: 11,
           color: "#e0d0f0",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.6)",
         }}
       >
         {/* Header */}
@@ -721,71 +726,61 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
                 style={{ ...inputStyle, width: 48, padding: "2px 6px", fontSize: 11, textAlign: "center" }}
               />
             </div>
-            <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+            <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "4px 0 4px 4px" }}>✕</button>
           </div>
         </div>
 
-        {/* Preview — always visible at top */}
-        <div className="edit-preview-row" style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 16, marginBottom: 12, flexShrink: 0 }}>
-          <TrimmedCard>
-            <ProxyCard
-              topFace={top} bottomFace={bot}
-              topPalette={getPalette(top.colors || [])}
-              bottomPalette={getPalette(bot.colors || [])}
-              topArt={topArt || card.topArt}
-              bottomArt={botArt || card.bottomArt}
-              artOpacity={effectiveArt} overlayOpacity={effectiveOverlay}
-              vignetteOpacity={effectiveVignette} fontScale={effectiveFont}
-              flipBottom={effectiveFlip}
-              dividerLabel={dividerLabel || null} layout={card.layout}
-              showBorder={globals.showBorder ?? DEFAULTS.showBorder}
-            />
-          </TrimmedCard>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8 }}>
-            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
-            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Crimson Text', serif" }}>
-              Top ▲
+        {/* Preview */}
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 16, marginBottom: 10, flexShrink: 0 }}>
+          <div style={{
+            height: Math.round(CARD_H * previewScale),
+            display: "flex", justifyContent: "center", overflow: "hidden", flexShrink: 0,
+          }}>
+            <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top center", flexShrink: 0 }}>
+              <TrimmedCard>
+                <ProxyCard
+                  topFace={top} bottomFace={bot}
+                  topPalette={getPalette(top.colors || [])}
+                  bottomPalette={getPalette(bot.colors || [])}
+                  topArt={topArt || card.topArt}
+                  bottomArt={botArt || card.bottomArt}
+                  artOpacity={effectiveArt} overlayOpacity={effectiveOverlay}
+                  vignetteOpacity={effectiveVignette} fontScale={effectiveFont}
+                  flipBottom={effectiveFlip}
+                  dividerLabel={dividerLabel || null} layout={card.layout}
+                  showBorder={globals.showBorder ?? DEFAULTS.showBorder}
+                />
+              </TrimmedCard>
             </div>
-            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Crimson Text', serif" }}>
-              Bottom {effectiveFlip ? "↻ flipped" : "↕ upright"}
-            </div>
-            <FlipToggle label="" value={flipBottom} onChange={setFlipBottom} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4, flex: isMobile ? 1 : "unset" }}>
+            {!isMobile && <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>}
+            <FlipToggle label={isMobile ? "Bottom face" : ""} value={flipBottom} onChange={setFlipBottom} />
           </div>
         </div>
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
-          <button style={editTabStyle(tab === "text")} onClick={() => setTab("text")}>Text & Fields</button>
-          <button style={editTabStyle(tab === "appearance")} onClick={() => setTab("appearance")}>Appearance</button>
+          <button style={editTabStyle(tab === "look")} onClick={() => setTab("look")}>Look</button>
+          <button style={editTabStyle(tab === "text")} onClick={() => setTab("text")}>Text & Art</button>
         </div>
 
         {/* Tab content */}
-        <div className="edit-tab-content" style={{
+        <div style={{
           flex: 1, minHeight: 0, overflowY: "auto",
           border: "1px solid #4a2a7a", borderTop: "none",
           borderRadius: "0 0 6px 6px",
           padding: 12, background: "#2a1a4a22",
         }}>
-          {tab === "text" && (
-            <>
-              <div className="face-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <FaceFields label="▲ TOP FACE" face={top} setFace={setTop} art={topArt} setArt={setTopArt} />
-                <FaceFields label="▼ BOTTOM FACE" face={bot} setFace={setBot} art={botArt} setArt={setBotArt} />
-              </div>
-            </>
-          )}
-
-          {tab === "appearance" && (
+          {tab === "look" && (
             <>
               <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>ART</div>
               <OverrideSlider label="Art Visibility" value={localArtOpacity} globalValue={globals.artOpacity} onChange={setLocalArtOpacity} />
               <OverrideSlider label="Color Wash" value={localOverlayOpacity} globalValue={globals.overlayOpacity} onChange={setLocalOverlayOpacity} />
               <OverrideSlider label="Vignette" value={localVignetteOpacity} globalValue={globals.vignetteOpacity} onChange={setLocalVignetteOpacity} />
-
               <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
               <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>TEXT</div>
               <OverrideSlider label="Font Size" value={localFontScale} globalValue={globals.fontScale} onChange={setLocalFontScale} min={0.5} max={1.5} />
-
               <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
               <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>DIVIDER</div>
               <div style={{ marginBottom: 6 }}>
@@ -799,10 +794,30 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
                   style={inputStyle}
                 />
               </div>
-
               <div style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 8 }}>
                 Per-card overrides. Click "reset" to use global settings.
               </div>
+            </>
+          )}
+
+          {tab === "text" && (
+            <>
+              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                {[["top", "▲ Top Face"], ["bottom", "▼ Bottom Face"]].map(([val, lbl]) => (
+                  <button key={val} onClick={() => setTextFace(val)} style={{
+                    flex: 1, padding: "6px 0", fontSize: 10, cursor: "pointer",
+                    fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
+                    background: textFace === val ? "#3a1a6a" : "transparent",
+                    border: `1px solid ${textFace === val ? "#6d28d9" : "#3a2a5a"}`,
+                    borderRadius: 4,
+                    color: textFace === val ? "#c4a4ff" : "#5a4a7a",
+                  }}>{lbl}</button>
+                ))}
+              </div>
+              {textFace === "top"
+                ? <FaceFields label="" face={top} setFace={setTop} art={topArt} setArt={setTopArt} />
+                : <FaceFields label="" face={bot} setFace={setBot} art={botArt} setArt={setBotArt} />
+              }
             </>
           )}
         </div>
@@ -822,12 +837,12 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
               vignetteOpacity: localVignetteOpacity,
               fontScale: localFontScale,
             })}
-            style={{ flex: 1, padding: "8px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            style={{ flex: 1, padding: "9px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
             Save
           </button>
           <button
             onClick={onCancel}
-            style={{ padding: "8px 16px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+            style={{ flex: 1, padding: "9px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
             Cancel
           </button>
         </div>
@@ -843,9 +858,10 @@ const SAMPLE_CARD_NAME = "Delver of Secrets";
 function SettingsModal({ settings, onApply, onCancel }) {
   const [local, setLocal] = useState({ ...settings });
   const [sample, setSample] = useState(null);
+  const [tab, setTab] = useState("visuals");
 
   const set = key => val => setLocal(p => ({ ...p, [key]: val }));
-  const setUiScale = val => set("uiScale")(val);
+  const isMobile = window.innerWidth < 600;
 
   useEffect(() => {
     fetchCard(SAMPLE_CARD_NAME)
@@ -853,12 +869,31 @@ function SettingsModal({ settings, onApply, onCancel }) {
       .catch(() => {});
   }, []);
 
+  const toggleRow = (label, key, opts) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, color: "#a090c0", fontFamily: "'Crimson Text', serif", marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {opts.map(o => (
+          <button key={String(o.val)} onClick={() => set(key)(o.val)} style={{
+            flex: 1, padding: "7px 0", fontSize: 11, cursor: "pointer",
+            fontFamily: "'Cinzel', serif", borderRadius: 4,
+            background: local[key] === o.val ? "#6d28d9" : "#1a0f2a",
+            border: local[key] === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
+            color: local[key] === o.val ? "#fff" : "#a080c0",
+          }}>{o.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
         background: "rgba(0,0,0,0.75)",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex",
+        alignItems: isMobile ? "flex-end" : "center",
+        justifyContent: "center",
         backdropFilter: "blur(4px)",
       }}
       onClick={onCancel}
@@ -868,111 +903,104 @@ function SettingsModal({ settings, onApply, onCancel }) {
         style={{
           background: "#120a1e",
           border: "1px solid #3a1a5a",
-          borderRadius: 12,
-          padding: 24,
-          width: 680,
-          maxWidth: "95vw",
-          maxHeight: "90vh",
+          borderRadius: isMobile ? "14px 14px 0 0" : 12,
+          padding: isMobile ? "16px 14px 24px" : "20px 24px",
+          width: isMobile ? "100vw" : 620,
+          maxWidth: "100vw",
+          maxHeight: isMobile ? "85vh" : "90vh",
           display: "flex",
           flexDirection: "column",
           fontSize: 11,
           color: "#e0d0f0",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.6)",
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
             ⚙ SETTINGS
           </div>
           <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
-        {/* Body */}
-        <div className="settings-body" style={{ display: "flex", gap: 24, overflow: "auto", flex: 1, minHeight: 0 }}>
+        {/* Body: controls + preview side-by-side on desktop */}
+        <div style={{ display: "flex", gap: 20, flex: 1, minHeight: 0, overflow: "hidden" }}>
 
-          {/* Controls */}
-          <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
-            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>ART</div>
-            <Slider label="Art Visibility"  value={local.artOpacity}     onChange={set("artOpacity")}     />
-            <Slider label="Color Wash"       value={local.overlayOpacity} onChange={set("overlayOpacity")} />
-            <Slider label="Vignette"         value={local.vignetteOpacity} onChange={set("vignetteOpacity")} />
-
-            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
-            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>TEXT</div>
-            <Slider label="Font Size" value={local.fontScale} onChange={set("fontScale")} min={0.5} max={1.5} />
-
-            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
-            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 12, letterSpacing: "0.06em" }}>INTERFACE</div>
-            <Slider label="UI Scale" value={local.uiScale || DEFAULTS.uiScale} onChange={set("uiScale")} min={0.75} max={2.0} />
-
-            <div style={{ borderTop: "1px solid #1a1030", margin: "14px 0" }} />
-            <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 10, letterSpacing: "0.06em" }}>CARD LAYOUT</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif" }}>Bottom face orientation</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[{ val: true, label: "Flipped" }, { val: false, label: "Upright" }].map(o => (
-                  <button key={String(o.val)} onClick={() => set("flipBottomDefault")(o.val)} style={{
-                    padding: "4px 12px", fontSize: 11, cursor: "pointer",
-                    fontFamily: "'Cinzel', serif", borderRadius: 4,
-                    background: local.flipBottomDefault === o.val ? "#6d28d9" : "#1a0f2a",
-                    border: local.flipBottomDefault === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
-                    color: local.flipBottomDefault === o.val ? "#fff" : "#a080c0",
-                  }}>{o.label}</button>
-                ))}
-              </div>
+          {/* Controls column */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
+              <button style={editTabStyle(tab === "visuals")} onClick={() => setTab("visuals")}>Visuals</button>
+              <button style={editTabStyle(tab === "layout")} onClick={() => setTab("layout")}>Layout</button>
+              <button style={editTabStyle(tab === "interface")} onClick={() => setTab("interface")}>Interface</button>
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 12, color: "#a090c0", fontFamily: "'Crimson Text', serif" }}>Card border</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[{ val: false, label: "Borderless" }, { val: true, label: "Show border" }].map(o => (
-                  <button key={String(o.val)} onClick={() => set("showBorder")(o.val)} style={{
-                    padding: "4px 12px", fontSize: 11, cursor: "pointer",
-                    fontFamily: "'Cinzel', serif", borderRadius: 4,
-                    background: local.showBorder === o.val ? "#6d28d9" : "#1a0f2a",
-                    border: local.showBorder === o.val ? "1px solid #8b5cf6" : "1px solid #4a2a7a",
-                    color: local.showBorder === o.val ? "#fff" : "#a080c0",
-                  }}>{o.label}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 12 }}>
-              Tip: lower Color Wash + higher Art Visibility for a more painterly look.
+            <div style={{
+              flex: 1, minHeight: 0, overflowY: "auto",
+              border: "1px solid #4a2a7a", borderTop: "none",
+              borderRadius: "0 0 6px 6px",
+              padding: 14, background: "#2a1a4a22",
+            }}>
+              {tab === "visuals" && (
+                <>
+                  <Slider label="Art Visibility"  value={local.artOpacity}      onChange={set("artOpacity")} />
+                  <Slider label="Color Wash"       value={local.overlayOpacity}  onChange={set("overlayOpacity")} />
+                  <Slider label="Vignette"         value={local.vignetteOpacity} onChange={set("vignetteOpacity")} />
+                  <div style={{ borderTop: "1px solid #1a1030", margin: "12px 0" }} />
+                  <Slider label="Font Size" value={local.fontScale} onChange={set("fontScale")} min={0.5} max={1.5} />
+                  <div style={{ fontSize: 11, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 10 }}>
+                    Tip: lower Color Wash + higher Art Visibility for a more painterly look.
+                  </div>
+                </>
+              )}
+              {tab === "layout" && (
+                <>
+                  {toggleRow("Bottom face orientation", "flipBottomDefault", [
+                    { val: true, label: "Flipped" }, { val: false, label: "Upright" },
+                  ])}
+                  {toggleRow("Card border", "showBorder", [
+                    { val: false, label: "Borderless" }, { val: true, label: "Show Border" },
+                  ])}
+                </>
+              )}
+              {tab === "interface" && (
+                <Slider label="UI Scale" value={local.uiScale || DEFAULTS.uiScale} onChange={set("uiScale")} min={0.75} max={2.0} />
+              )}
             </div>
           </div>
 
-          {/* Live preview */}
-          <div className="settings-preview" style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
-            {sample ? (
-              <TrimmedCard>
-                <ProxyCard
-                  topFace={sample.topFace} bottomFace={sample.bottomFace}
-                  topPalette={sample.topPalette} bottomPalette={sample.botPalette}
-                  topArt={sample.topArt} bottomArt={sample.bottomArt}
-                  artOpacity={local.artOpacity}
-                  overlayOpacity={local.overlayOpacity}
-                  vignetteOpacity={local.vignetteOpacity}
-                  fontScale={local.fontScale}
-                  flipBottom={local.flipBottomDefault}
-                  showBorder={local.showBorder ?? DEFAULTS.showBorder}
-                />
-              </TrimmedCard>
-            ) : (
-              <div style={{
-                width: CARD_W, height: CARD_H,
-                borderRadius: 12, border: "1px solid #2a1a4a",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "#3a2a5a", fontSize: 12, fontFamily: "'Crimson Text', serif",
-              }}>
-                <LoadingSpinner />
-              </div>
-            )}
-          </div>
+          {/* Live preview — desktop only */}
+          {!isMobile && (
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>
+              {sample ? (
+                <TrimmedCard>
+                  <ProxyCard
+                    topFace={sample.topFace} bottomFace={sample.bottomFace}
+                    topPalette={sample.topPalette} bottomPalette={sample.botPalette}
+                    topArt={sample.topArt} bottomArt={sample.bottomArt}
+                    artOpacity={local.artOpacity}
+                    overlayOpacity={local.overlayOpacity}
+                    vignetteOpacity={local.vignetteOpacity}
+                    fontScale={local.fontScale}
+                    flipBottom={local.flipBottomDefault}
+                    showBorder={local.showBorder ?? DEFAULTS.showBorder}
+                  />
+                </TrimmedCard>
+              ) : (
+                <div style={{
+                  width: CARD_W, height: CARD_H,
+                  borderRadius: 12, border: "1px solid #2a1a4a",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <LoadingSpinner />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Footer buttons */}
-        <div style={{ display: "flex", gap: 8, marginTop: 20, flexShrink: 0 }}>
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 8, marginTop: 16, flexShrink: 0 }}>
           <button
             onClick={() => onApply(local)}
             style={{ flex: 1, padding: "9px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
@@ -1344,13 +1372,6 @@ export default function App() {
         * { box-sizing: border-box; }
         input[type=range] { cursor: pointer; }
         input::placeholder, textarea::placeholder { color: #4a3a6a; opacity: 1; }
-
-        @media (max-width: 560px) {
-          .edit-tab-content .face-grid { grid-template-columns: 1fr !important; }
-          .edit-preview-row { flex-direction: column !important; align-items: center !important; }
-          .settings-body { flex-direction: column !important; }
-          .settings-preview { order: -1 !important; }
-        }
 
         @media (max-width: 768px) {
           .app-root { zoom: 1 !important; }
