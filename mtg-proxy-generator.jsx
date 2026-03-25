@@ -4,14 +4,13 @@ import html2canvas from "html2canvas";
 import posthog from "posthog-js";
 import "mana-font/css/mana.css";
 
-const CARD_W = 250;    // 2.5 inches at 100px/in — the trim/cut size
-const CARD_H = 350;    // 3.5 inches at 100px/in — the trim/cut size
-const BLEED_PX = 13;   // ~3.3mm per side at 100px/in — MPC requires 1/8" (3.175mm); 13px gives 3.302mm, safely over the minimum
-const FULL_W = CARD_W + 2 * BLEED_PX;  // 274px — full print width including bleed
-const FULL_H = CARD_H + 2 * BLEED_PX;  // 374px — full print height including bleed
-// Export scale: 6 = double the 822×1122 reference → 1644×2244 px output (~600 DPI).
-// At scale 6: bleed=72px each side, trim=1500×2100px, full-bleed=1644×2244px.
-// Set to 3 for the 822×1122 single-res reference (300 DPI equivalent).
+const CARD_W = 252;    // 63mm at 4px/mm — exact MTG card trim width
+const CARD_H = 352;    // 88mm at 4px/mm — exact MTG card trim height (ratio 63:88 exactly)
+const BLEED_PX = 13;   // 3.25mm per side at 4px/mm — MPC requires 1/8" (3.175mm); 13px gives 3.25mm, safely over the minimum
+const FULL_W = CARD_W + 2 * BLEED_PX;  // 278px — full print width including bleed
+const FULL_H = CARD_H + 2 * BLEED_PX;  // 378px — full print height including bleed
+// Export scale: 6 → 24px/mm output = ~610 DPI.
+// At scale 6: bleed=78px each side, trim=1512×2112px, full-bleed=1668×2268px.
 const EXPORT_SCALE = 6;
 // Safe area: 36px at scale 3 (= BLEED_PX in screen units). No rendered text should
 // appear within this margin of the trim/cut boundary (bleed | border | safe | text).
@@ -58,17 +57,14 @@ function ArtBackground({ artUrl, palette, isTop, artOpacity, overlayOpacity, vig
   return (
     <>
       {artUrl && (
-        <img
-          src={artUrl}
-          alt=""
+        <div
           style={{
             position: "absolute", inset: 0,
-            width: "100%", height: "100%",
-            objectFit: "cover",
-            objectPosition: "center top",
+            backgroundImage: `url(${artUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center top",
             opacity: artOpacity,
             pointerEvents: "none",
-            userSelect: "none",
           }}
         />
       )}
