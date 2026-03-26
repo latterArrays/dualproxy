@@ -851,6 +851,74 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   );
 }
 
+// ── Card preview modal ──────────────────────────────────────────────────────────
+
+function CardPreviewModal({ card, onClose, previewProps }) {
+  const isMobile = window.innerWidth < 600;
+  const scale = isMobile
+    ? Math.min(1.8, (window.innerWidth * 0.88 - 40) / CARD_W)
+    : 1.8;
+  const scaledW = Math.round(CARD_W * scale);
+  const scaledH = Math.round(CARD_H * scale);
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1100,
+        background: "rgba(0,0,0,0.85)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backdropFilter: "blur(6px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#120a1e",
+          border: "1px solid #3a1a5a",
+          borderRadius: 16,
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 12,
+          boxShadow: "0 8px 48px rgba(0,0,0,0.8)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
+            {card.cardName}
+          </span>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", color: "#8060a0", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 0 0 16px" }}
+          >✕</button>
+        </div>
+        <div style={{ width: scaledW, height: scaledH, overflow: "hidden", position: "relative", borderRadius: Math.round(12 * scale) }}>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
+            <TrimmedCard>
+              <ProxyCard
+                topFace={card.topFace} bottomFace={card.bottomFace}
+                topPalette={card.topPalette} bottomPalette={card.botPalette}
+                topArt={card.topArt} bottomArt={card.bottomArt}
+                flipBottom={card.flipBottom ?? previewProps.flipBottomDefault}
+                artOpacity={card.artOpacity ?? previewProps.artOpacity}
+                overlayOpacity={card.overlayOpacity ?? previewProps.overlayOpacity}
+                vignetteOpacity={card.vignetteOpacity ?? previewProps.vignetteOpacity}
+                fontScale={card.fontScale ?? previewProps.fontScale}
+                dividerLabel={card.dividerLabel} layout={card.layout}
+                showBorder={previewProps.showBorder}
+              />
+            </TrimmedCard>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Settings modal ─────────────────────────────────────────────────────────────
 
 const SAMPLE_CARD_NAME = "Delver of Secrets";
@@ -1247,6 +1315,7 @@ export default function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [visualizeBleed, setVisualizeBleed] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [previewCardId, setPreviewCardId] = useState(null);
   const [rotatedIds, setRotatedIds] = useState(new Set());
   const toggleRotate = id => setRotatedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [artOpacity, setArtOpacity] = useState(DEFAULTS.artOpacity);
@@ -1528,12 +1597,15 @@ export default function App() {
               <div style={{ position: "relative", width: visualizeBleed ? FULL_W : CARD_W }}>
                 {/* When visualizeBleed=false: clip to trim size so layout is stable.
                     When visualizeBleed=true: show full bleed area with cut line guide. */}
-                <div style={{
+                <div
+                  onClick={() => setPreviewCardId(c.id)}
+                  style={{
                   width: visualizeBleed ? FULL_W : CARD_W,
                   height: visualizeBleed ? FULL_H : CARD_H,
                   overflow: "hidden",
                   borderRadius: 12,
                   position: "relative",
+                  cursor: "zoom-in",
                 }}>
                   <div style={{
                     position: "absolute",
@@ -1637,6 +1709,15 @@ export default function App() {
           card={c}
           onSave={updates => handleSaveEdit(editingId, updates)}
           onCancel={() => setEditingId(null)}
+          previewProps={{ ...opacityProps, flipBottomDefault }}
+        />
+      ) : null; })()}
+
+      {/* ── Card preview modal ── */}
+      {previewCardId && (() => { const c = cards.find(x => x.id === previewCardId); return c ? (
+        <CardPreviewModal
+          card={c}
+          onClose={() => setPreviewCardId(null)}
           previewProps={{ ...opacityProps, flipBottomDefault }}
         />
       ) : null; })()}
