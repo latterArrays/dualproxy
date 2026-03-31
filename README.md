@@ -30,6 +30,10 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 - **Per-card edit mode**
   - Reposition image
   - Version selector for cards with multiple printings
+- **Custom Images** 
+  - Upload your own backgrounds
+- **Version hash**
+- Contact info for feedback
 
 ### Monetization Ideas
 - **Premium** - features like HiDPi export, integration with mpc or another fullfillment/printer site, custom art upload, save work (what else?)

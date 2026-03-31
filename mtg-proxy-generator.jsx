@@ -657,6 +657,148 @@ const editTabStyle = (active) => ({
   position: "relative", zIndex: active ? 1 : 0,
 });
 
+// ── Printing picker modal ───────────────────────────────────────────────────────
+
+function PrintingPickerModal({ cardName, onSelect, onClose }) {
+  const [printings, setPrintings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const isMobile = window.innerWidth < 600;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const url = `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(cardName)}"&unique=prints&order=released`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("No printings found");
+        const data = await res.json();
+        if (!cancelled) setPrintings(data.data || []);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [cardName]);
+
+  function getArts(p) {
+    if (p.card_faces?.length >= 2) {
+      return {
+        topArt: p.card_faces[0]?.image_uris?.art_crop || null,
+        bottomArt: p.card_faces[1]?.image_uris?.art_crop || null,
+      };
+    }
+    const art = p.image_uris?.art_crop || null;
+    return { topArt: art, bottomArt: art };
+  }
+
+  function getThumb(p) {
+    return p.card_faces?.[0]?.image_uris?.art_crop || p.image_uris?.art_crop || null;
+  }
+
+  function getTreatmentLabel(p) {
+    const tags = [];
+    if (p.border_color === "borderless") tags.push("Borderless");
+    const fx = p.frame_effects || [];
+    if (fx.includes("extendedart")) tags.push("Extended Art");
+    if (fx.includes("showcase")) tags.push("Showcase");
+    if (fx.includes("etched")) tags.push("Etched");
+    return tags.join(" · ") || null;
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1200,
+        background: "rgba(0,0,0,0.82)",
+        display: "flex",
+        alignItems: isMobile ? "flex-end" : "center",
+        justifyContent: "center",
+        backdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#120a1e",
+          border: "1px solid #3a1a5a",
+          borderRadius: isMobile ? "14px 14px 0 0" : 12,
+          padding: 16,
+          width: isMobile ? "100vw" : 480,
+          maxWidth: "100vw",
+          maxHeight: isMobile ? "88vh" : "82vh",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          color: "#e0d0f0",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.6)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
+            SELECT PRINTING
+            {!loading && !error && <span style={{ color: "#5a4a7a", fontWeight: 400, fontSize: 10, marginLeft: 8 }}>{printings.length} versions</span>}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "4px 0 4px 8px" }}>✕</button>
+        </div>
+
+        {loading && (
+          <div style={{ textAlign: "center", padding: "32px 0", color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontSize: 13 }}>Loading printings…</div>
+        )}
+        {error && (
+          <div style={{ textAlign: "center", padding: 16, color: "#f87171", fontSize: 11, fontFamily: "'Crimson Text', serif" }}>{error}</div>
+        )}
+        {!loading && !error && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, overflowY: "auto", flex: 1, minHeight: 0 }}>
+            {printings.map(p => {
+              const thumb = getThumb(p);
+              const label = getTreatmentLabel(p);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => onSelect(getArts(p))}
+                  style={{
+                    cursor: "pointer",
+                    background: "#1a0f2a",
+                    border: "1px solid #3a1a5a",
+                    borderRadius: 6,
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    transition: "border-color 0.12s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = "#7c3aed"}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = "#3a1a5a"}
+                >
+                  {thumb
+                    ? <img src={thumb} alt={p.set_name} style={{ width: "100%", aspectRatio: "626/457", objectFit: "cover", display: "block" }} crossOrigin="anonymous" />
+                    : <div style={{ width: "100%", aspectRatio: "626/457", background: "#2a1a4a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🃏</div>
+                  }
+                  <div style={{ padding: "5px 6px" }}>
+                    <div style={{ fontSize: 9, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      {p.set} · #{p.collector_number}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#7060a0", fontFamily: "'Crimson Text', serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.set_name}
+                    </div>
+                    {label && (
+                      <div style={{ fontSize: 8, color: "#f59e0b", fontFamily: "'Cinzel', serif", letterSpacing: "0.02em", marginTop: 2 }}>{label}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EditModal({ card, onSave, onCancel, previewProps }) {
   const [top, setTop] = useState({ ...card.topFace });
   const [bot, setBot] = useState({ ...card.bottomFace });
@@ -667,6 +809,7 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const [dividerLabel, setDividerLabel] = useState(card.dividerLabel ?? "");
   const [tab, setTab] = useState("look");
   const [textFace, setTextFace] = useState("top");
+  const [showPrintingPicker, setShowPrintingPicker] = useState(false);
 
   // Per-card appearance overrides
   const [localArtOpacity, setLocalArtOpacity] = useState(card.artOpacity);
@@ -684,6 +827,7 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const previewScale = isMobile ? 0.58 : 1;
 
   return (
+    <>
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
@@ -774,6 +918,19 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
         }}>
           {tab === "look" && (
             <>
+              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 6, letterSpacing: "0.06em" }}>PRINTING</div>
+              <button
+                onClick={() => setShowPrintingPicker(true)}
+                style={{
+                  width: "100%", padding: "7px", marginBottom: 10,
+                  background: "#1a0f2a", border: "1px solid #4a2a7a",
+                  borderRadius: 6, color: "#c4a4ff",
+                  fontSize: 10, cursor: "pointer",
+                  fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
+                }}>
+                Browse Printings →
+              </button>
+              <div style={{ borderTop: "1px solid #1a1030", margin: "0 0 10px" }} />
               <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>ART</div>
               <OverrideSlider label="Art Visibility" value={localArtOpacity} globalValue={globals.artOpacity} onChange={setLocalArtOpacity} />
               <OverrideSlider label="Color Wash" value={localOverlayOpacity} globalValue={globals.overlayOpacity} onChange={setLocalOverlayOpacity} />
@@ -848,6 +1005,19 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
         </div>
       </div>
     </div>
+
+    {showPrintingPicker && (
+      <PrintingPickerModal
+        cardName={card.cardName}
+        onSelect={({ topArt: ta, bottomArt: ba }) => {
+          if (ta) setTopArt(ta);
+          if (ba) setBotArt(ba);
+          setShowPrintingPicker(false);
+        }}
+        onClose={() => setShowPrintingPicker(false)}
+      />
+    )}
+    </>
   );
 }
 
