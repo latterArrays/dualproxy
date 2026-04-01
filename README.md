@@ -24,6 +24,11 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 ### Next Up
 - **Mobile friendly layout** - site needs to work beautifully on a mobile aspect ratio
 - **Handle melded cards** - properly handle creating a single proxy representation of melded cards 
+- Drag and drop custom art
+- Make sure new edit/preview looks good on mobile
+- Export card list as txt for easy copy/paste
+- Custom xml export to save which art/custom art URL
+
 ### Rework later
 - **Bulk import/export** — paste a decklist or import from a file; export all proxies as a print sheet or ZIP
 - **Global settings** — default font, text size, card style preferences applied across all cards

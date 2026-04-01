@@ -585,7 +585,24 @@ function FaceFields({ label, face, setFace, art, setArt }) {
         <Field label="Toughness" value={face.toughness || ""} onChange={v => setFace(p => ({ ...p, toughness: v }))} />
         <Field label="Loyalty" value={face.loyalty || ""} onChange={v => setFace(p => ({ ...p, loyalty: v }))} />
       </div>
-      <Field label="Custom Art URL" value={art} onChange={setArt} />
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 2, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>Custom Art URL or Upload</div>
+        <div style={{ display: "flex", gap: 4 }}>
+          <input value={art} onChange={e => setArt(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          <label style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 30, flexShrink: 0, borderRadius: 4, cursor: "pointer",
+            background: "#1a0f2a", border: "1px solid #4a2a7a", fontSize: 14, color: "#c4a4ff",
+          }} title="Upload image from device">
+            📁
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+              const file = e.target.files[0];
+              if (file) setArt(URL.createObjectURL(file));
+              e.target.value = "";
+            }} />
+          </label>
+        </div>
+      </div>
       <div style={{ borderTop: "1px solid #2a1a4a", margin: "10px 0 8px" }} />
     </>
   );
@@ -810,6 +827,7 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const [tab, setTab] = useState("look");
   const [textFace, setTextFace] = useState("top");
   const [showPrintingPicker, setShowPrintingPicker] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Per-card appearance overrides
   const [localArtOpacity, setLocalArtOpacity] = useState(card.artOpacity);
@@ -824,7 +842,41 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
   const effectiveVignette = localVignetteOpacity ?? globals.vignetteOpacity;
   const effectiveFont = localFontScale ?? globals.fontScale;
   const isMobile = window.innerWidth < 600;
-  const previewScale = isMobile ? 0.58 : 1;
+  const previewScale = isMobile
+    ? Math.min(1.1, (window.innerWidth - 40) / CARD_W)
+    : 1.2;
+  const scaledW = Math.round(CARD_W * previewScale);
+  const scaledH = Math.round(CARD_H * previewScale);
+  const isDFC = card.bottomFace?.oracle_text !== "(Single-faced card — no back face)";
+
+  function handleArtFile(file, face) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const url = URL.createObjectURL(file);
+    face === "bottom" ? setBotArt(url) : setTopArt(url);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const face = (isDFC && (e.clientY - rect.top) > rect.height / 2) ? "bottom" : "top";
+    handleArtFile(file, face);
+  }
+
+  const savePayload = {
+    topFace: top, bottomFace: bot,
+    topArt: topArt || null, bottomArt: botArt || null,
+    qty, flipBottom,
+    dividerLabel: dividerLabel || null,
+    topPalette: getPalette(top.colors || []),
+    botPalette: getPalette(bot.colors || []),
+    artOpacity: localArtOpacity,
+    overlayOpacity: localOverlayOpacity,
+    vignetteOpacity: localVignetteOpacity,
+    fontScale: localFontScale,
+  };
 
   return (
     <>
@@ -845,42 +897,37 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
           background: "#120a1e",
           border: "1px solid #3a1a5a",
           borderRadius: isMobile ? "14px 14px 0 0" : 12,
-          padding: isMobile ? "14px 14px 24px" : "16px 16px 14px",
-          width: isMobile ? "100vw" : 480,
+          padding: 16,
+          width: isMobile ? "100vw" : "min(92vw, 760px)",
           maxWidth: "100vw",
-          maxHeight: isMobile ? "93vh" : "92vh",
+          maxHeight: isMobile ? "93vh" : "90vh",
           display: "flex",
-          flexDirection: "column",
+          flexDirection: isMobile ? "column" : "row",
+          gap: 16,
           fontSize: 11,
           color: "#e0d0f0",
           boxShadow: "0 -8px 40px rgba(0,0,0,0.6)",
+          overflow: "hidden",
         }}
       >
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-            EDIT — {card.cardName}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 9, color: "#8070a0", fontFamily: "'Cinzel', serif" }}>Qty</span>
-              <input
-                type="number" min={1} max={20} value={qty}
-                onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                style={{ ...inputStyle, width: 48, padding: "2px 6px", fontSize: 11, textAlign: "center" }}
-              />
-            </div>
-            <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "4px 0 4px 4px" }}>✕</button>
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 16, marginBottom: 10, flexShrink: 0 }}>
-          <div style={{
-            height: Math.round(CARD_H * previewScale),
-            display: "flex", justifyContent: "center", overflow: "hidden", flexShrink: 0,
-          }}>
-            <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top center", flexShrink: 0 }}>
+        {/* ── Left: preview + flip ── */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {/* Drag-and-drop card preview */}
+          <div
+            onDragOver={e => { e.preventDefault(); setIsDraggingOver(true); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingOver(false); }}
+            onDrop={handleDrop}
+            style={{
+              width: scaledW, height: scaledH,
+              position: "relative",
+              borderRadius: Math.round(12 * previewScale),
+              overflow: "hidden",
+              flexShrink: 0,
+              outline: isDraggingOver ? "2px dashed #8b5cf6" : "2px solid transparent",
+              transition: "outline-color 0.1s",
+            }}
+          >
+            <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
               <TrimmedCard>
                 <ProxyCard
                   topFace={top} bottomFace={bot}
@@ -896,112 +943,141 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
                 />
               </TrimmedCard>
             </div>
+            {isDraggingOver && (
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                {isDFC ? (
+                  <>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "rgba(109,40,217,0.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "#e0d0ff", fontSize: 9, fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>▲ TOP FACE</div>
+                    <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "#8b5cf6" }} />
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "50%", background: "rgba(109,40,217,0.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "#e0d0ff", fontSize: 9, fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>▼ BOTTOM FACE</div>
+                  </>
+                ) : (
+                  <div style={{ position: "absolute", inset: 0, background: "rgba(109,40,217,0.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "#e0d0ff", fontSize: 10, fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>DROP ART</div>
+                )}
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4, flex: isMobile ? 1 : "unset" }}>
-            {!isMobile && <div style={{ fontSize: 9, color: "#5a4a7a", fontFamily: "'Cinzel', serif", letterSpacing: "0.06em" }}>PREVIEW</div>}
-            <FlipToggle label={isMobile ? "Bottom face" : ""} value={flipBottom} onChange={setFlipBottom} />
+          <div style={{ fontSize: 8, color: "#3a2a5a", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
+            Drop an image onto the card to set art
+          </div>
+          <div style={{ width: scaledW }}>
+            <FlipToggle label="Bottom face" value={flipBottom} onChange={setFlipBottom} />
           </div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
-          <button style={editTabStyle(tab === "look")} onClick={() => setTab("look")}>Look</button>
-          <button style={editTabStyle(tab === "text")} onClick={() => setTab("text")}>Text & Art</button>
-        </div>
-
-        {/* Tab content */}
+        {/* ── Right: controls ── */}
         <div style={{
-          flex: 1, minHeight: 0, overflowY: "auto",
-          border: "1px solid #4a2a7a", borderTop: "none",
-          borderRadius: "0 0 6px 6px",
-          padding: 12, background: "#2a1a4a22",
+          flex: 1, minWidth: 0,
+          display: "flex", flexDirection: "column",
+          minHeight: 0,
         }}>
-          {tab === "look" && (
-            <>
-              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 6, letterSpacing: "0.06em" }}>PRINTING</div>
-              <button
-                onClick={() => setShowPrintingPicker(true)}
-                style={{
-                  width: "100%", padding: "7px", marginBottom: 10,
-                  background: "#1a0f2a", border: "1px solid #4a2a7a",
-                  borderRadius: 6, color: "#c4a4ff",
-                  fontSize: 10, cursor: "pointer",
-                  fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
-                }}>
-                Browse Printings →
-              </button>
-              <div style={{ borderTop: "1px solid #1a1030", margin: "0 0 10px" }} />
-              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>ART</div>
-              <OverrideSlider label="Art Visibility" value={localArtOpacity} globalValue={globals.artOpacity} onChange={setLocalArtOpacity} />
-              <OverrideSlider label="Color Wash" value={localOverlayOpacity} globalValue={globals.overlayOpacity} onChange={setLocalOverlayOpacity} />
-              <OverrideSlider label="Vignette" value={localVignetteOpacity} globalValue={globals.vignetteOpacity} onChange={setLocalVignetteOpacity} />
-              <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
-              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>TEXT</div>
-              <OverrideSlider label="Font Size" value={localFontScale} globalValue={globals.fontScale} onChange={setLocalFontScale} min={0.5} max={1.5} />
-              <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
-              <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>DIVIDER</div>
-              <div style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 2, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>
-                  Label — leave blank to auto-detect from card type
-                </div>
+          {/* Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              EDIT — {card.cardName}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 9, color: "#8070a0", fontFamily: "'Cinzel', serif" }}>Qty</span>
                 <input
-                  value={dividerLabel}
-                  onChange={e => setDividerLabel(e.target.value)}
-                  placeholder={autoDividerLabel(card.layout)}
-                  style={inputStyle}
+                  type="number" min={1} max={20} value={qty}
+                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ ...inputStyle, width: 48, padding: "2px 6px", fontSize: 11, textAlign: "center" }}
                 />
               </div>
-              <div style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 8 }}>
-                Per-card overrides. Click "reset" to use global settings.
-              </div>
-            </>
-          )}
+              <button onClick={onCancel} style={{ background: "none", border: "none", color: "#8060a0", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "4px 0 4px 4px" }}>✕</button>
+            </div>
+          </div>
 
-          {tab === "text" && (
-            <>
-              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-                {[["top", "▲ Top Face"], ["bottom", "▼ Bottom Face"]].map(([val, lbl]) => (
-                  <button key={val} onClick={() => setTextFace(val)} style={{
-                    flex: 1, padding: "6px 0", fontSize: 10, cursor: "pointer",
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
+            <button style={editTabStyle(tab === "look")} onClick={() => setTab("look")}>Look</button>
+            <button style={editTabStyle(tab === "text")} onClick={() => setTab("text")}>Text & Art</button>
+          </div>
+
+          {/* Tab content — scrollable */}
+          <div style={{
+            flex: 1, minHeight: 0, overflowY: "auto",
+            border: "1px solid #4a2a7a", borderTop: "none",
+            borderRadius: "0 0 6px 6px",
+            padding: 12, background: "#2a1a4a22",
+          }}>
+            {tab === "look" && (
+              <>
+                <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 6, letterSpacing: "0.06em" }}>PRINTING</div>
+                <button
+                  onClick={() => setShowPrintingPicker(true)}
+                  style={{
+                    width: "100%", padding: "7px", marginBottom: 10,
+                    background: "#1a0f2a", border: "1px solid #4a2a7a",
+                    borderRadius: 6, color: "#c4a4ff",
+                    fontSize: 10, cursor: "pointer",
                     fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
-                    background: textFace === val ? "#3a1a6a" : "transparent",
-                    border: `1px solid ${textFace === val ? "#6d28d9" : "#3a2a5a"}`,
-                    borderRadius: 4,
-                    color: textFace === val ? "#c4a4ff" : "#5a4a7a",
-                  }}>{lbl}</button>
-                ))}
-              </div>
-              {textFace === "top"
-                ? <FaceFields label="" face={top} setFace={setTop} art={topArt} setArt={setTopArt} />
-                : <FaceFields label="" face={bot} setFace={setBot} art={botArt} setArt={setBotArt} />
-              }
-            </>
-          )}
-        </div>
+                  }}>
+                  Browse Printings →
+                </button>
+                <div style={{ borderTop: "1px solid #1a1030", margin: "0 0 10px" }} />
+                <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>ART</div>
+                <OverrideSlider label="Art Visibility" value={localArtOpacity} globalValue={globals.artOpacity} onChange={setLocalArtOpacity} />
+                <OverrideSlider label="Color Wash" value={localOverlayOpacity} globalValue={globals.overlayOpacity} onChange={setLocalOverlayOpacity} />
+                <OverrideSlider label="Vignette" value={localVignetteOpacity} globalValue={globals.vignetteOpacity} onChange={setLocalVignetteOpacity} />
+                <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
+                <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>TEXT</div>
+                <OverrideSlider label="Font Size" value={localFontScale} globalValue={globals.fontScale} onChange={setLocalFontScale} min={0.5} max={1.5} />
+                <div style={{ borderTop: "1px solid #1a1030", margin: "10px 0" }} />
+                <div style={{ fontSize: 10, color: "#c4a4ff", fontFamily: "'Cinzel', serif", marginBottom: 8, letterSpacing: "0.06em" }}>DIVIDER</div>
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 9, color: "#8070a0", marginBottom: 2, fontFamily: "'Cinzel', serif", letterSpacing: "0.04em" }}>
+                    Label — leave blank to auto-detect from card type
+                  </div>
+                  <input
+                    value={dividerLabel}
+                    onChange={e => setDividerLabel(e.target.value)}
+                    placeholder={autoDividerLabel(card.layout)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ fontSize: 10, color: "#5a4a7a", fontFamily: "'Crimson Text', serif", fontStyle: "italic", marginTop: 8 }}>
+                  Per-card overrides. Click "reset" to use global settings.
+                </div>
+              </>
+            )}
 
-        {/* Footer */}
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexShrink: 0 }}>
-          <button
-            onClick={() => onSave({
-              topFace: top, bottomFace: bot,
-              topArt: topArt || null, bottomArt: botArt || null,
-              qty, flipBottom,
-              dividerLabel: dividerLabel || null,
-              topPalette: getPalette(top.colors || []),
-              botPalette: getPalette(bot.colors || []),
-              artOpacity: localArtOpacity,
-              overlayOpacity: localOverlayOpacity,
-              vignetteOpacity: localVignetteOpacity,
-              fontScale: localFontScale,
-            })}
-            style={{ flex: 1, padding: "9px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
-            Save
-          </button>
-          <button
-            onClick={onCancel}
-            style={{ flex: 1, padding: "9px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
-            Cancel
-          </button>
+            {tab === "text" && (
+              <>
+                <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                  {[["top", "▲ Top Face"], ["bottom", "▼ Bottom Face"]].map(([val, lbl]) => (
+                    <button key={val} onClick={() => setTextFace(val)} style={{
+                      flex: 1, padding: "6px 0", fontSize: 10, cursor: "pointer",
+                      fontFamily: "'Cinzel', serif", letterSpacing: "0.04em",
+                      background: textFace === val ? "#3a1a6a" : "transparent",
+                      border: `1px solid ${textFace === val ? "#6d28d9" : "#3a2a5a"}`,
+                      borderRadius: 4,
+                      color: textFace === val ? "#c4a4ff" : "#5a4a7a",
+                    }}>{lbl}</button>
+                  ))}
+                </div>
+                {textFace === "top"
+                  ? <FaceFields label="" face={top} setFace={setTop} art={topArt} setArt={setTopArt} />
+                  : <FaceFields label="" face={bot} setFace={setBot} art={botArt} setArt={setBotArt} />
+                }
+              </>
+            )}
+          </div>
+
+          {/* Buttons */}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexShrink: 0 }}>
+            <button
+              onClick={() => onSave(savePayload)}
+              style={{ flex: 1, padding: "9px", background: "#6d28d9", border: "none", borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+              Save
+            </button>
+            <button
+              onClick={onCancel}
+              style={{ flex: 1, padding: "9px", background: "#2a1a3a", border: "1px solid #4a2a6a", borderRadius: 6, color: "#c0a0e0", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif" }}>
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1018,74 +1094,6 @@ function EditModal({ card, onSave, onCancel, previewProps }) {
       />
     )}
     </>
-  );
-}
-
-// ── Card preview modal ──────────────────────────────────────────────────────────
-
-function CardPreviewModal({ card, onClose, previewProps }) {
-  const isMobile = window.innerWidth < 600;
-  const scale = isMobile
-    ? Math.min(1.8, (window.innerWidth * 0.88 - 40) / CARD_W)
-    : 1.8;
-  const scaledW = Math.round(CARD_W * scale);
-  const scaledH = Math.round(CARD_H * scale);
-
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 1100,
-        background: "rgba(0,0,0,0.85)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backdropFilter: "blur(6px)",
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: "#120a1e",
-          border: "1px solid #3a1a5a",
-          borderRadius: 16,
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 12,
-          boxShadow: "0 8px 48px rgba(0,0,0,0.8)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#c4a4ff", fontFamily: "'Cinzel', serif", letterSpacing: "0.08em" }}>
-            {card.cardName}
-          </span>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8060a0", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 0 0 16px" }}
-          >✕</button>
-        </div>
-        <div style={{ width: scaledW, height: scaledH, overflow: "hidden", position: "relative", borderRadius: Math.round(12 * scale) }}>
-          <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
-            <TrimmedCard>
-              <ProxyCard
-                topFace={card.topFace} bottomFace={card.bottomFace}
-                topPalette={card.topPalette} bottomPalette={card.botPalette}
-                topArt={card.topArt} bottomArt={card.bottomArt}
-                flipBottom={card.flipBottom ?? previewProps.flipBottomDefault}
-                artOpacity={card.artOpacity ?? previewProps.artOpacity}
-                overlayOpacity={card.overlayOpacity ?? previewProps.overlayOpacity}
-                vignetteOpacity={card.vignetteOpacity ?? previewProps.vignetteOpacity}
-                fontScale={card.fontScale ?? previewProps.fontScale}
-                dividerLabel={card.dividerLabel} layout={card.layout}
-                showBorder={previewProps.showBorder}
-              />
-            </TrimmedCard>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1485,7 +1493,6 @@ export default function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [visualizeBleed, setVisualizeBleed] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [previewCardId, setPreviewCardId] = useState(null);
   const [rotatedIds, setRotatedIds] = useState(new Set());
   const toggleRotate = id => setRotatedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [artOpacity, setArtOpacity] = useState(DEFAULTS.artOpacity);
@@ -1768,14 +1775,14 @@ export default function App() {
                 {/* When visualizeBleed=false: clip to trim size so layout is stable.
                     When visualizeBleed=true: show full bleed area with cut line guide. */}
                 <div
-                  onClick={() => setPreviewCardId(c.id)}
+                  onClick={() => setEditingId(id => id === c.id ? null : c.id)}
                   style={{
                   width: visualizeBleed ? FULL_W : CARD_W,
                   height: visualizeBleed ? FULL_H : CARD_H,
                   overflow: "hidden",
                   borderRadius: 12,
                   position: "relative",
-                  cursor: "zoom-in",
+                  cursor: "pointer",
                 }}>
                   <div style={{
                     position: "absolute",
@@ -1879,15 +1886,6 @@ export default function App() {
           card={c}
           onSave={updates => handleSaveEdit(editingId, updates)}
           onCancel={() => setEditingId(null)}
-          previewProps={{ ...opacityProps, flipBottomDefault }}
-        />
-      ) : null; })()}
-
-      {/* ── Card preview modal ── */}
-      {previewCardId && (() => { const c = cards.find(x => x.id === previewCardId); return c ? (
-        <CardPreviewModal
-          card={c}
-          onClose={() => setPreviewCardId(null)}
           previewProps={{ ...opacityProps, flipBottomDefault }}
         />
       ) : null; })()}
