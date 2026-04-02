@@ -4,7 +4,8 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 
 **Live site:** [dualproxy.app](https://dualproxy.app)
 
-Vibe coded by Matt Winchester with a healthy dose of Claude :)
+Lovingly vibe-coded by Matt Winchester with a healthy dose of Claude :)
+
 ---
 
 ## Features
