@@ -1898,6 +1898,7 @@ export default function App() {
       }}>
         <p style={{ fontSize: 11, color: "#3a2a5a", margin: 0, fontFamily: "'Crimson Text', serif" }}>
           Created with love by <a href="https://github.com/latterArrays" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Matt Winchester</a> · Data from Scryfall · Mana pips by <a href="https://mana.andrewgioia.com" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Andrew Gioia</a> (MIT)
+          Magic: The Gathering and all related intellectual property are owned by Wizards of the Coast. This project is unofficial and not affiliated with or endorsed by Wizards of the Coast.
         </p>
       </div>
 
