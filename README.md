@@ -4,6 +4,7 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 
 **Live site:** [dualproxy.app](https://dualproxy.app)
 
+Vibe coded by Matt Winchester with a healthy dose of Claude :)
 ---
 
 ## Features
@@ -20,30 +21,20 @@ A clean, browser-based MTG proxy card generator with a focus on double-faced and
 ### Known bugs
 - P/T can overlap the middle bar if text is too big
 - Tap icon isn't rendering correctly
+- PDF Export is brokwn
 
-### Next Up
-- **Mobile friendly layout** - site needs to work beautifully on a mobile aspect ratio
-- **Handle melded cards** - properly handle creating a single proxy representation of melded cards 
-- Drag and drop custom art
+### Next Up / TODOs / Other ideas
+- Bleed probably needs some adjustments for test printing
 - Make sure new edit/preview looks good on mobile
 - Export card list as txt for easy copy/paste
 - Custom xml export to save which art/custom art URL
-
-### Rework later
-- **Bulk import/export** — paste a decklist or import from a file; export all proxies as a print sheet or ZIP
-- **Global settings** — default font, text size, card style preferences applied across all cards
 - **Per-card edit mode**
   - Reposition image
-  - Version selector for cards with multiple printings
 - **Custom Images** 
-  - Upload your own backgrounds
+  - Upload your own backgrounds (works with URL/file, but drag and drop would be nice)
 - **Version hash**
-- Contact info for feedback
-
-### Monetization Ideas
-- **Premium** - features like HiDPi export, integration with mpc or another fullfillment/printer site, custom art upload, save work (what else?)
-- **Ko-fi integration** — support the project, unlock cosmetic or convenience features
-- **MPC Fill / proxy printer integration** — send your proxy sheet directly to a print-on-demand service
+- **Contact info for feedback**
+- Better look for any NON dual cards
 
 ---
 
@@ -65,4 +56,4 @@ wrangler pages deploy dist/
 
 ## Legal
 
-DualProxy is a fan-made tool for personal, non-commercial use. Card data and images are sourced from [Scryfall](https://scryfall.com). Magic: The Gathering is property of Wizards of the Coast.
+DualProxy is a fan-made tool for personal use. Card data and images are sourced from [Scryfall](https://scryfall.com). Magic: The Gathering is property of Wizards of the Coast.

@@ -5,5 +5,8 @@
 # Build output
 dist/
 node_modules/**
-.env.example
 .env
+
+# Other
+.claude/
+.wrangler/
