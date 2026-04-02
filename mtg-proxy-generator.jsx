@@ -1670,8 +1670,8 @@ export default function App() {
             textShadow: "0 0 20px rgba(140,90,240,0.4)",
           }}>DualProxy</h1>
           <p className="header-subtitle" style={{ margin: "0 0 18px", fontSize: 13, color: "#8070a0", fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
-            <b>Create beautiful Magic: The Gathering placeholder and playtest cards with ease.</b><br></br>
-            Make substitutes for Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br>
+            <b>Create beautiful Magic: The Gathering substitute and playtest cards with ease.</b><br></br>
+            Make placeholders for Double-faced & transforming cards — both sides visible, no sleeve-flipping required. <br></br>
           </p>
 
           {/* Single add row */}
@@ -1897,7 +1897,7 @@ export default function App() {
         textAlign: "center",
       }}>
         <p style={{ fontSize: 11, color: "#3a2a5a", margin: 0, fontFamily: "'Crimson Text', serif" }}>
-          Data from Scryfall · Mana pips by <a href="https://mana.andrewgioia.com" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Andrew Gioia</a> (MIT)
+          Created with love by <a href="https://github.com/latterArrays" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Matt Winchester</a> · Data from Scryfall · Mana pips by <a href="https://mana.andrewgioia.com" target="_blank" rel="noreferrer" style={{ color: "#5a3a8a" }}>Andrew Gioia</a> (MIT)
         </p>
       </div>
 
